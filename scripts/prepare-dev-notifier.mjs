@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 if (process.platform === 'darwin') {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..')
   const bundle = join(root, 'src-tauri/target/debug/bundle/macos/OneMail Wanglai Dev.app')
-  const executable = join(bundle, 'Contents/MacOS/onemail')
+  const executable = join(bundle, 'Contents/MacOS/onemail-wanglai')
   const stamp = join(root, 'src-tauri/target/debug/.onemail-dev-notifier-v1')
   const sources = [
     'src-tauri/src/main.rs',
