@@ -37,7 +37,9 @@ git cherry-pick <commit>                                                        
 
 ## 命名与标识
 
-- 产品名：**OneMail 往来**（开发态 `OneMail 往来 Dev`）
+- 产品名（打包/桌面条目，**必须是 ASCII**）：`OneMail Wanglai`（开发态 `OneMail Wanglai Dev`）
+  —— 原因：Debian 包名只允许小写 ASCII，中文会让 `dpkg` 直接拒收
+- 界面显示名（托盘、通知、关于页、i18n）：**OneMail 往来**
 - identifier：`com.huzhihui.onemail.wanglai`（开发态 `.dev`）
   沿用上游前缀 + `wanglai` 子后缀，目的是避免与上游安装包**共享数据目录与单实例锁**——同 identifier 会导致两个版本读写同一个 SQLite、互相抢窗口。
 - 以下标识刻意**保持不变**，以免引入迁移成本：Cargo/npm 包名 `onemail`、lib 名 `onemail_lib`、数据表前缀 `onemail_`、备份扩展名 `.onemail`、环境变量前缀 `ONEMAIL_*`。

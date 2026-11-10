@@ -66,11 +66,15 @@ gh workflow run release.yml -f tag=v26.1110.2308
 - [ ] `git status` 干净，没有把 `.devhome/`、`.appdata/` 等本地缓存目录提交进去（已在 `.gitignore`）
 - [ ] Release 说明里的 AGPL 与非官方分支声明仍在（`prepare` 作业里生成）
 - [ ] 若本次带了数据库结构变更：确认 `db/mod.rs` 的 `SCHEMA_VERSION` 已递增，老用户升级会走 `apply_migrations`
+- [ ] 构建后抽查 deb 元数据：`dpkg-deb -f <包>.deb Package` 必须输出 ASCII 包名，`dpkg-deb -I <包>.deb` 的
+      `Maintainer` / `Description` 应是本分支信息
 
 ## 五、已知风险
 
-1. **`productName` 含中文**（`OneMail 往来`）：Linux/macOS 已验证可构建，Windows 的 NSIS 安装包文件名历史上对非 ASCII 支持不稳。
-   第一次出 Windows 包后请检查产物名与安装路径；如异常，把 `productName` 改成 ASCII（如 `OneMail Wanglai`），中文名只留在托盘/关于页。
+1. **`productName` 必须是 ASCII**（现为 `OneMail Wanglai`）：Debian 包名只允许小写字母、数字与 `-+._`，
+   早前的 `OneMail 往来` 会让 `dpkg` 直接拒收（`无效的软件包名 ... 不允许出现字符`）。
+   中文名只出现在应用内部（托盘 tooltip、通知署名、界面文案 `common.oneMail`），不参与打包。
+   若想让桌面图标也显示中文，可用 Tauri 的 `bundle.linux.deb.desktopTemplate` 单独覆盖 `.desktop` 的 `Name=`。
 2. **未签名安装包**会被系统提示；开源项目可以直接说明「首次运行请右键打开」。
 3. **自动更新未启用**：`release.yml` 里 `uploadUpdaterJson: false`，且 `tauri.conf.json` 没有 updater 配置。
    要启用需生成签名密钥对并补 `plugins.updater` 配置。

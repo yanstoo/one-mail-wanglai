@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OneMail 往来",
+  "productName": "OneMail Wanglai",
   "version": "26.806.2208",
   "identifier": "com.huzhihui.onemail.wanglai",
   "build": {
