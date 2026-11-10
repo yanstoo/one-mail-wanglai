@@ -213,6 +213,79 @@ fn persist_read_state(state: &AppState, message_id: i64, account_id: i64, folder
     Ok(())
 }
 
+/// 覆盖单封邮件的垃圾归属：`Some(true)`=标为垃圾，`Some(false)`=不是垃圾，`None`=跟随文件夹。
+/// 只改本地标记，不动远端文件夹（IMAP MOVE 尚未接入）。
+#[tauri::command]
+pub fn messages_set_junk_override(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    message_id: i64,
+    junk: Option<bool>,
+) -> Result<Value, String> {
+    let connection = db::open(&state)?;
+    let account_id: i64 = connection
+        .query_row(
+            "SELECT account_id FROM onemail_mail_messages WHERE message_id=?1",
+            [message_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("读取邮件失败：{error}"))?;
+
+    connection
+        .execute(
+            "UPDATE onemail_mail_messages
+             SET junk_override=?2, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE message_id=?1",
+            params![message_id, junk.map(|value| if value { 1 } else { 0 })],
+        )
+        .map_err(|error| format!("更新垃圾标记失败：{error}"))?;
+
+    crate::db::correspondents::reindex_account(&connection, account_id)?;
+    let _ = app.emit(
+        "sync/mailboxChanged",
+        json!({ "accountId": account_id, "reason": "junk-override", "changedAt": db::now_iso() }),
+    );
+
+    Ok(json!({ "messageId": message_id, "junkOverride": junk }))
+}
+
+/// 本地删除/恢复单封邮件：`deleted=true` 从往来索引中移除，`false` 恢复。
+#[tauri::command]
+pub fn messages_set_deleted(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    message_id: i64,
+    deleted: bool,
+) -> Result<Value, String> {
+    let connection = db::open(&state)?;
+    let account_id: i64 = connection
+        .query_row(
+            "SELECT account_id FROM onemail_mail_messages WHERE message_id=?1",
+            [message_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("读取邮件失败：{error}"))?;
+
+    connection
+        .execute(
+            "UPDATE onemail_mail_messages
+             SET user_deleted=?2,
+                 deleted_at=CASE WHEN ?2 THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE NULL END,
+                 updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE message_id=?1",
+            params![message_id, deleted],
+        )
+        .map_err(|error| format!("更新删除状态失败：{error}"))?;
+
+    crate::db::correspondents::reindex_account(&connection, account_id)?;
+    let _ = app.emit(
+        "sync/mailboxChanged",
+        json!({ "accountId": account_id, "reason": "delete", "changedAt": db::now_iso() }),
+    );
+
+    Ok(json!({ "messageId": message_id, "deleted": deleted }))
+}
+
 fn emit_read_state_change(app: &AppHandle, update: &Value) {
     let _ = app.emit("sync/mailboxChanged", json!({
         "accountId": update["accountId"],

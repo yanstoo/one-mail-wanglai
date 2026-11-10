@@ -33,6 +33,9 @@ export type OneMailApi = {
     get: (messageId: number) => Promise<MailMessageDetail | null>
     loadBody: (messageId: number) => Promise<MailMessageBodyLoadResult>
     setReadState: (messageId: number, isRead: boolean) => Promise<MessageReadStateUpdate>
+    /** junk: true=标为垃圾，false=不是垃圾，null=跟随文件夹 */
+    setJunkOverride: (messageId: number, junk: boolean | null) => Promise<{ messageId: number; junkOverride: boolean | null }>
+    setDeleted: (messageId: number, deleted: boolean) => Promise<{ messageId: number; deleted: boolean }>
   }
   compose: {
     createReplyDraft: (input: ReplyDraftInput) => Promise<ComposeDraft>

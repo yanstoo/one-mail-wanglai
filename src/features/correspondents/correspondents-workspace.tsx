@@ -107,12 +107,11 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
         toast.error('还没有可用的发件账号，请先在设置里添加邮箱。')
         return
       }
+      // 回复/回复全部/转发都需要一条 mail 来源的邮件；发件箱记录只能降级为新邮件
       const relatedMessageId =
-        related && related.source === 'mail' && (kind === 'reply' || kind === 'reply_all')
-          ? related.messageId
-          : undefined
+        related && related.source === 'mail' && kind !== 'new' ? related.messageId : undefined
       const effectiveKind: ComposeKind =
-        (kind === 'reply' || kind === 'reply_all') && relatedMessageId === undefined ? 'new' : kind
+        kind !== 'new' && relatedMessageId === undefined ? 'new' : kind
 
       setComposePending(true)
       try {
@@ -177,6 +176,40 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
     setComposeOpen(false)
     setComposeDraft(null)
   }, [])
+
+  const handleToggleJunk = React.useCallback(async (): Promise<void> => {
+    if (!selectedMessage) return
+    if (selectedMessage.source !== 'mail') {
+      toast.error('发件箱记录没有垃圾属性。')
+      return
+    }
+    const next = !selectedMessage.isJunk
+    try {
+      await window.api.messages.setJunkOverride(selectedMessage.messageId, next)
+      toast.success(next ? '已标为垃圾邮件' : '已移回普通分组')
+      setSelectedMessage((current) => (current ? { ...current, isJunk: next } : current))
+      await queryClient.invalidateQueries({ queryKey: ['correspondents'] })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '更新垃圾标记失败')
+    }
+  }, [queryClient, selectedMessage])
+
+  const handleDelete = React.useCallback(async (): Promise<void> => {
+    if (!selectedMessage) return
+    if (selectedMessage.source !== 'mail') {
+      toast.error('发件箱记录请在发件箱中删除。')
+      return
+    }
+    try {
+      await window.api.messages.setDeleted(selectedMessage.messageId, true)
+      toast.success('已删除（仅本地）')
+      setSelectedMessage(null)
+      setDetail(null)
+      await queryClient.invalidateQueries({ queryKey: ['correspondents'] })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '删除失败')
+    }
+  }, [queryClient, selectedMessage])
 
   const replyTarget = selectedMessage ?? thread?.messages[0] ?? null
 
@@ -261,6 +294,9 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
             error={detailError}
             onReply={() => void startCompose('reply', replyTarget)}
             onReplyAll={() => void startCompose('reply_all', replyTarget)}
+            onForward={() => void startCompose('forward', replyTarget)}
+            onToggleJunk={() => void handleToggleJunk()}
+            onDelete={() => void handleDelete()}
           />
         )}
       </div>
@@ -270,7 +306,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
         <span>普通未读 {counts?.normal.unread ?? 0}</span>
         <span>垃圾未读 {counts?.junk.unread ?? 0}</span>
         <div className="flex-1" />
-        <span>写信已内嵌（MailComposer inline）</span>
+        <span>写信内嵌 · 垃圾归属可逐封纠正 · 删除仅本地</span>
       </footer>
     </div>
   )

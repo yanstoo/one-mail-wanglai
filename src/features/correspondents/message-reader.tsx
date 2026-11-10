@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Archive, CornerUpLeft, CornerUpRight, Forward, Mail, ShieldAlert, Trash2 } from 'lucide-react'
+import { CornerUpLeft, CornerUpRight, Forward, Mail, ShieldAlert, Trash2 } from 'lucide-react'
 
 import { formatAbsoluteTime } from '@renderer/components/mail/date-format'
 import type { CorrespondentThreadMessage, MailMessageDetail } from '@renderer/shared/types'
@@ -14,7 +14,10 @@ export function CorrespondentMessageReader({
   loading,
   error,
   onReply,
-  onReplyAll
+  onReplyAll,
+  onForward,
+  onDelete,
+  onToggleJunk
 }: {
   message: CorrespondentThreadMessage | null
   detail: MailMessageDetail | null
@@ -22,6 +25,10 @@ export function CorrespondentMessageReader({
   error: string | null
   onReply: () => void
   onReplyAll: () => void
+  onForward: () => void
+  onDelete: () => void
+  /** 当前邮件是否被判为垃圾，用来决定按钮是「不是垃圾」还是「标为垃圾」 */
+  onToggleJunk: () => void
 }): React.JSX.Element {
   if (!message) {
     return (
@@ -54,13 +61,27 @@ export function CorrespondentMessageReader({
         >
           <CornerUpRight className="size-3.5" aria-hidden="true" /> 回复全部
         </button>
-        <button type="button" className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
+        <button
+          type="button"
+          onClick={onForward}
+          className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+        >
           <Forward className="size-3.5" aria-hidden="true" /> 转发
         </button>
-        <button type="button" className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
-          <Archive className="size-3.5" aria-hidden="true" /> 归档
+        <button
+          type="button"
+          onClick={onToggleJunk}
+          className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+          title={message.isJunk ? '这封不是垃圾邮件，移回普通分组' : '把这一封标记为垃圾邮件'}
+        >
+          <ShieldAlert className="size-3.5" aria-hidden="true" />
+          {message.isJunk ? '不是垃圾' : '标为垃圾'}
         </button>
-        <button type="button" className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
+        <button
+          type="button"
+          onClick={onDelete}
+          className="flex items-center gap-1 text-muted-foreground hover:text-destructive"
+        >
           <Trash2 className="size-3.5" aria-hidden="true" /> 删除
         </button>
       </header>

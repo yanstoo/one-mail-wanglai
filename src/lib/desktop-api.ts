@@ -67,7 +67,11 @@ export function createDesktopApi(): OneMailApi {
       get: (messageId) => command('messages_get', { messageId }),
       loadBody: (messageId) => command('messages_load_body', { messageId }),
       setReadState: (messageId, isRead) =>
-        command('messages_set_read_state', { messageId, isRead })
+        command('messages_set_read_state', { messageId, isRead }),
+      setJunkOverride: (messageId, junk) =>
+        command('messages_set_junk_override', { messageId, junk }),
+      setDeleted: (messageId, deleted) =>
+        command('messages_set_deleted', { messageId, deleted })
     },
     compose: {
       createReplyDraft: (input) => command('compose_create_reply_draft', { input }),

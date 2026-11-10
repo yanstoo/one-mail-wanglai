@@ -551,7 +551,7 @@ fn ingest_mail(
     let sql = format!(
         "SELECT m.message_id, m.account_id, m.subject, m.has_attachments,
                 COALESCE(m.read_state_override, m.is_read),
-                f.role,
+                f.role, m.junk_override,
                 COALESCE(NULLIF(m.sent_at,''), NULLIF(m.received_at,''),
                          NULLIF(m.internal_date,''), m.created_at),
                 a.normalized_email, a.email, a.name
@@ -580,13 +580,18 @@ fn ingest_mail(
         let has_attachment: i64 = row.get(3).map_err(|error| error.to_string())?;
         let is_read: i64 = row.get(4).map_err(|error| error.to_string())?;
         let role: String = row.get(5).map_err(|error| error.to_string())?;
-        let sent_at: String = row.get(6).map_err(|error| error.to_string())?;
-        let address_norm: String = row.get(7).map_err(|error| error.to_string())?;
-        let address_display: String = row.get(8).map_err(|error| error.to_string())?;
-        let name: Option<String> = row.get(9).map_err(|error| error.to_string())?;
+        let junk_override: Option<i64> = row.get(6).map_err(|error| error.to_string())?;
+        let sent_at: String = row.get(7).map_err(|error| error.to_string())?;
+        let address_norm: String = row.get(8).map_err(|error| error.to_string())?;
+        let address_display: String = row.get(9).map_err(|error| error.to_string())?;
+        let name: Option<String> = row.get(10).map_err(|error| error.to_string())?;
 
         let direction = if role == "sent" { "out" } else { "in" };
-        let is_junk = role == "junk";
+        // 单封覆盖优先于文件夹角色：NULL=跟随文件夹，1=强制垃圾，0=强制非垃圾
+        let is_junk = match junk_override {
+            Some(value) => value == 1,
+            None => role == "junk",
+        };
         let participant = Participant {
             address_norm,
             address_display,

@@ -8,7 +8,8 @@ const SCHEMA_SQL: &str = include_str!("schema.sql");
 
 /// 数据库结构版本，写入 `PRAGMA user_version`。
 /// 1：往来联系人索引（三张表 + 首次全量回填）。
-const SCHEMA_VERSION: i64 = 1;
+/// 2：`mail_messages.junk_override`（单封邮件的垃圾归属覆盖）需要重算索引。
+const SCHEMA_VERSION: i64 = 2;
 
 pub fn initialize(state: &AppState) -> Result<(), String> {
     let connection = open(state)?;
@@ -41,7 +42,7 @@ fn apply_migrations(connection: &Connection) -> Result<(), String> {
     if version >= SCHEMA_VERSION {
         return Ok(());
     }
-    if version < 1 {
+    if version < 2 {
         correspondents::rebuild_all(connection)?;
     }
     correspondents::set_schema_version(connection, SCHEMA_VERSION)
@@ -113,6 +114,12 @@ fn ensure_compatibility(connection: &Connection) -> Result<(), String> {
         "onemail_mail_accounts",
         "connection_state",
         "TEXT NOT NULL DEFAULT 'connected'",
+    )?;
+    add_column_if_missing(
+        connection,
+        "onemail_mail_messages",
+        "junk_override",
+        "INTEGER CHECK (junk_override IN (0, 1))",
     )?;
     add_column_if_missing(connection, "onemail_mail_accounts", "badge_label", "TEXT")?;
     add_column_if_missing(connection, "onemail_mail_accounts", "badge_color", "TEXT")?;

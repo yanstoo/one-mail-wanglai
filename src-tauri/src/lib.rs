@@ -131,6 +131,8 @@ pub fn run() {
             data::messages::messages_get,
             data::messages::messages_load_body,
             data::messages::messages_set_read_state,
+            data::messages::messages_set_junk_override,
+            data::messages::messages_set_deleted,
             data::compose::compose_create_reply_draft,
             data::compose::compose_create_forward_draft,
             data::compose::compose_send,

@@ -248,3 +248,85 @@ fn trash_and_drafts_do_not_create_correspondence() {
     let items = list(&connection, GROUP_NORMAL, None, None, 50).expect("list normal");
     assert!(items["items"].as_array().unwrap().is_empty(), "回收站邮件不参与往来");
 }
+
+#[test]
+fn junk_override_moves_a_message_between_groups() {
+    let connection = setup();
+    let message_id = insert_message(&connection, 1, 1, 1, "其实是垃圾", "2026-11-01T09:00:00.000Z", 1);
+    add_address(&connection, message_id, "from", "hank@corp.test", "Hank");
+    add_address(&connection, message_id, "to", "me@a.test", "我");
+    rebuild_all(&connection).expect("rebuild index");
+
+    // 收件箱邮件默认属普通组
+    assert!(
+        list(&connection, GROUP_JUNK, None, None, 50).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "普通邮件不应出现在垃圾组"
+    );
+
+    // 标为垃圾 → 只留垃圾组
+    connection
+        .execute(
+            "UPDATE onemail_mail_messages SET junk_override=1 WHERE message_id=?1",
+            [message_id],
+        )
+        .expect("mark junk");
+    rebuild_all(&connection).expect("rebuild index");
+    let junk = list(&connection, GROUP_JUNK, None, None, 50).unwrap();
+    let hank = find(&junk, "hank@corp.test");
+    assert_eq!(hank["junkUnreadCount"], 0, "该邮件已读，垃圾未读应为 0");
+    assert!(hank["junkLastAt"].as_str().is_some());
+    assert!(
+        list(&connection, GROUP_NORMAL, None, None, 50).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "标为垃圾后不应留在普通组"
+    );
+
+    // 再标回“不是垃圾”
+    connection
+        .execute(
+            "UPDATE onemail_mail_messages SET junk_override=0 WHERE message_id=?1",
+            [message_id],
+        )
+        .expect("unmark junk");
+    rebuild_all(&connection).expect("rebuild index");
+    assert!(list(&connection, GROUP_JUNK, None, None, 50).unwrap()["items"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let normal = list(&connection, GROUP_NORMAL, None, None, 50).unwrap();
+    assert_eq!(find(&normal, "hank@corp.test")["inboundCount"], 1);
+}
+
+#[test]
+fn user_deleted_messages_leave_the_index() {
+    let connection = setup();
+    let message_id = insert_message(&connection, 1, 1, 1, "待删除", "2026-11-01T09:00:00.000Z", 1);
+    add_address(&connection, message_id, "from", "iris@corp.test", "Iris");
+    add_address(&connection, message_id, "to", "me@a.test", "我");
+    rebuild_all(&connection).expect("rebuild index");
+    assert_eq!(
+        find(&list(&connection, GROUP_NORMAL, None, None, 50).unwrap(), "iris@corp.test")
+            ["inboundCount"],
+        1
+    );
+
+    connection
+        .execute(
+            "UPDATE onemail_mail_messages SET user_deleted=1 WHERE message_id=?1",
+            [message_id],
+        )
+        .expect("mark deleted");
+    rebuild_all(&connection).expect("rebuild index");
+    assert!(
+        list(&connection, GROUP_NORMAL, None, None, 50).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "删除后联系人应离开索引"
+    );
+}
