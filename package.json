@@ -10,6 +10,8 @@
     "build:stage": "pnpm typecheck && vite build --mode stage",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "tauri": "tauri",
     "tauri:dev": "node scripts/prepare-dev-notifier.mjs && tauri dev --config src-tauri/tauri.dev.conf.json",
     "tauri:build": "tauri build"

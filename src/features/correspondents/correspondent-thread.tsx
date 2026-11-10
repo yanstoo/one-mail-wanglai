@@ -9,15 +9,7 @@ import type {
   CorrespondentThreadResult
 } from '@renderer/shared/types'
 
-function dayKey(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value.slice(0, 10)
-  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
-}
-
-function MessageKey(message: CorrespondentThreadMessage): string {
-  return `${message.source}:${message.messageId}`
-}
+import { groupThreadByDay, threadMessageKey } from './correspondent-utils'
 
 function Header({
   profile,
@@ -130,21 +122,7 @@ export function CorrespondentThread({
   onSelectMessage: (message: CorrespondentThreadMessage) => void
   onReply: () => void
 }): React.JSX.Element {
-  const messages = React.useMemo(() => {
-    const source = thread?.messages ?? []
-    return [...source].reverse()
-  }, [thread])
-
-  const grouped = React.useMemo(() => {
-    const buckets: { day: string; items: CorrespondentThreadMessage[] }[] = []
-    for (const message of messages) {
-      const day = dayKey(message.sentAt)
-      const last = buckets[buckets.length - 1]
-      if (last && last.day === day) last.items.push(message)
-      else buckets.push({ day, items: [message] })
-    }
-    return buckets
-  }, [messages])
+  const grouped = React.useMemo(() => groupThreadByDay(thread?.messages ?? []), [thread])
 
   if (!thread) {
     return (
@@ -170,15 +148,15 @@ export function CorrespondentThread({
             </div>
             {bucket.items.map((message) => (
               <Bubble
-                key={MessageKey(message)}
+                key={threadMessageKey(message)}
                 message={message}
-                selected={selectedKey === MessageKey(message)}
+                selected={selectedKey === threadMessageKey(message)}
                 onSelect={() => onSelectMessage(message)}
               />
             ))}
           </React.Fragment>
         ))}
-        {messages.length === 0 ? (
+        {grouped.length === 0 ? (
           <p className="py-6 text-center text-[11px] text-muted-foreground">还没有往来记录</p>
         ) : null}
       </div>

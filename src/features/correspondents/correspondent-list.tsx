@@ -10,6 +10,8 @@ import type {
   CorrespondentSummary
 } from '@renderer/shared/types'
 
+import { badgeTooltip, groupLastAt, groupUnreadCount, visibleBadges } from './correspondent-utils'
+
 const BADGE_FALLBACK_COLORS = ['#2d70d2', '#ea4335', '#12b7f5', '#ff6a00', '#7b61c9', '#227a4b']
 
 function badgeColor(badge: CorrespondentBadge, index: number): string {
@@ -39,11 +41,8 @@ function Avatar({ correspondent }: { correspondent: CorrespondentSummary }): Rea
 function BadgeStack({ correspondent }: { correspondent: CorrespondentSummary }): React.JSX.Element | null {
   const { accounts, badgeTotal } = correspondent
   if (accounts.length === 0) return null
-  const shown = accounts.slice(0, 2)
-  const extra = Math.max(0, badgeTotal - shown.length)
-  const tooltip = accounts
-    .map((account) => `${account.badge} · ${account.email}${account.unreadCount > 0 ? `（未读 ${account.unreadCount}）` : ''}`)
-    .join('\n')
+  const { shown, extra } = visibleBadges(accounts, badgeTotal)
+  const tooltip = badgeTooltip(accounts)
 
   return (
     <span className="flex items-center gap-0.5" title={tooltip}>
@@ -167,8 +166,8 @@ export function CorrespondentList({
 
         {items.map((correspondent) => {
           const selected = correspondent.correspondentId === selectedId
-          const unread = group === 'junk' ? correspondent.junkUnreadCount : correspondent.unreadCount
-          const lastAt = group === 'junk' ? correspondent.junkLastAt : correspondent.lastAt
+          const unread = groupUnreadCount(correspondent, group)
+          const lastAt = groupLastAt(correspondent, group)
           return (
             <button
               key={correspondent.correspondentId}
