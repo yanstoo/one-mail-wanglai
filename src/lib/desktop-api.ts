@@ -38,6 +38,12 @@ function subscribe<T>(eventName: string, callback: (payload: T) => void): () => 
 
 export function createDesktopApi(): OneMailApi {
   return {
+    correspondents: {
+      list: (query) => command('correspondents_list', { query }),
+      thread: (correspondentId, before, limit) =>
+        command('correspondents_thread', { correspondentId, before: before ?? null, limit: limit ?? null }),
+      groupCounts: () => command('correspondents_group_counts')
+    },
     conversations: {
       list: (query) => command('conversations_list', { query }),
       messages: (query) => command('conversations_messages', { query }),

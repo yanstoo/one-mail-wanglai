@@ -2,6 +2,7 @@ import { createHashRouter, Navigate } from 'react-router'
 
 import { AddAccountPage } from '@renderer/pages/accounts/new'
 import { MailboxPage } from '@renderer/pages/mailbox'
+import { CorrespondentsPage } from '@renderer/features/correspondents'
 import { SettingsWindow } from '@renderer/components/settings/settings-window'
 import { OriginalMessageWindow } from '@renderer/components/conversations/conversation-workspace/original-message-window'
 import { RouteErrorPage } from '@renderer/components/app-error-page'
@@ -13,6 +14,10 @@ export const appRouter = createHashRouter([
       {
         path: '/',
         element: <MailboxPage />
+      },
+      {
+        path: '/correspondents',
+        element: <CorrespondentsPage />
       },
       {
         path: '/accounts/new',

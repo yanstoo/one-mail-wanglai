@@ -1,5 +1,6 @@
 import type { ConversationListQuery, ConversationLocation, ConversationMessage, ConversationMessagesQuery, ConversationSearchResult, ConversationSummary } from '../conversations'
 import type { AccountCreateInput, AccountCreatedEvent, AccountUpdateInput, ImapFolder, ImapFolderDiscoveryInput, MailAccount, SyncMode } from './accounts'
+import type { CorrespondentGroupCounts, CorrespondentListQuery, CorrespondentListResult, CorrespondentThreadResult } from './correspondents'
 import type { AccountMailboxStats, ComposeDraft, ForwardDraftInput, MailAttachmentInput, MailMessageBodyLoadResult, MailMessageDetail, MailSendInput, MailSendResult, MessageReadStateUpdate, OutboxListQuery, OutboxMessage, ReplyDraftInput } from './messages'
 import type { AccountSyncRunResult, MailboxChangedEvent, NewMailNotification, SyncAllRunResult, SyncProgressEvent } from './sync'
 import type { AiChatInput, AiChatResult, AiSettings, AiSettingsInput, AppSettings, AppTheme, AppUpdateStatus, BackupImportProgress, BackupImportResult, BackupSyncDownloadResult, BackupSyncSettings, BackupSyncTestResult, BackupSyncTransferResult, SettingsUpdateInput, SystemInfo } from './settings'
@@ -10,6 +11,11 @@ export type OneMailApi = {
     messages: (query: ConversationMessagesQuery) => Promise<ConversationMessage[]>
     findMessage: (messageId: number) => Promise<ConversationLocation | null>
     search: (keyword: string, limit: number, offset: number) => Promise<ConversationSearchResult[]>
+  }
+  correspondents: {
+    list: (query: CorrespondentListQuery) => Promise<CorrespondentListResult>
+    thread: (correspondentId: number, before?: string | null, limit?: number) => Promise<CorrespondentThreadResult>
+    groupCounts: () => Promise<CorrespondentGroupCounts>
   }
   accounts: {
     list: () => Promise<MailAccount[]>

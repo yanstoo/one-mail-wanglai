@@ -2,4 +2,15 @@ export type { AccountConnectionStatus, AccountCreateInput, AccountCreatedEvent, 
 export type { AccountMailboxStats, ComposeDraft, ForwardAttachmentCandidate, ForwardDraftInput, MailAddressInput, MailAttachmentInput, MailComposeMode, MailMessageAttachment, MailMessageBody, MailMessageBodyLoadResult, MailMessageDetail, MailMessageSummary, MailSendInput, MailSendResult, MessageReadStateUpdate, OutboxListQuery, OutboxMessage, ReplyDraftInput } from './types/messages'
 export type { AccountSyncRunItem, AccountSyncRunResult, MailboxChangedEvent, NewMailNotification, NewMailNotificationMessage, SyncAllRunResult, SyncProgressEvent } from './types/sync'
 export type { AiChatInput, AiChatMessage, AiChatResult, AiSettings, AiSettingsInput, AppSettings, AppTheme, AppUpdateProgress, AppUpdateStatus, BackupImportProgress, BackupImportResult, BackupImportSource, BackupImportStage, BackupSyncDownloadResult, BackupSyncProvider, BackupSyncSettings, BackupSyncTestResult, BackupSyncTransferResult, SettingsUpdateInput, SystemInfo } from './types/settings'
+export type {
+  CorrespondentBadge,
+  CorrespondentGroup,
+  CorrespondentGroupCounts,
+  CorrespondentListQuery,
+  CorrespondentListResult,
+  CorrespondentProfile,
+  CorrespondentSummary,
+  CorrespondentThreadMessage,
+  CorrespondentThreadResult
+} from './types/correspondents'
 export type { OneMailApi } from './types/desktop-api'
