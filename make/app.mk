@@ -1,4 +1,4 @@
-.PHONY: dev build
+.PHONY: dev build deb
 dev:
 	@pids=$$(lsof -t -nP -iTCP:27502 -sTCP:LISTEN); \
 	if [ -n "$$pids" ]; then \
@@ -23,3 +23,8 @@ dev:
 
 build:
 	@$(PNPM) build
+
+# 打 Linux deb 并修补依赖声明（Tauri 的 depends 是追加，无法覆盖自动探测结果）
+deb:
+	@$(PNPM) tauri build --bundles deb
+	@node scripts/patch-deb-depends.mjs

@@ -258,3 +258,16 @@ jobs:
           projectPath: .
           uploadUpdaterJson: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      # Tauri 自动探测的 deb 依赖在 Ubuntu 24.04+ 上不成立（libgtk-3-0 已改名 t64），
+      # 修补控制文件后覆盖上传。
+      - name: Fix deb dependencies and re-upload
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/patch-deb-depends.mjs
+          deb=$(ls src-tauri/target/release/bundle/deb/*.deb | head -n1)
+          echo "patching: $deb"
+          gh release upload "${RELEASE_TAG}" "$deb" --clobber

@@ -69,7 +69,38 @@ gh workflow run release.yml -f tag=v26.1110.2308
 - [ ] 构建后抽查 deb 元数据：`dpkg-deb -f <包>.deb Package` 必须输出 ASCII 包名，`dpkg-deb -I <包>.deb` 的
       `Maintainer` / `Description` 应是本分支信息
 
-## 五、已知风险
+## 五、Linux deb 的依赖坑（必看）
+
+Tauri 自动探测出的 deb 依赖是 `libgtk-3-0`，而 **Ubuntu 24.04+ / Debian 13 把它改名成 `libgtk-3-0t64`**，
+在这些系统上 `apt install` 会直接失败：
+
+```
+依赖: libgtk-3-0 但无法安装它
+```
+
+更麻烦的是 `bundle.linux.deb.depends` 在 Tauri 里是**追加**到自动探测结果之后，无法覆盖它。
+所以仓库提供了构建后修补脚本：
+
+```bash
+make deb      # = pnpm tauri build --bundles deb + node scripts/patch-deb-depends.mjs
+```
+
+`scripts/patch-deb-depends.mjs` 会把 `Depends` 改写成带备选的写法：
+
+```
+libwebkit2gtk-4.1-0, libjavascriptcoregtk-4.1-0, libsoup-3.0-0,
+libayatana-appindicator3-1, libgtk-3-0t64 | libgtk-3-0
+```
+
+`release.yml` 的 Linux 矩阵里也有对应步骤（打包后修补再 `gh release upload --clobber`）。
+发布后自检：
+
+```bash
+dpkg-deb -f <包>.deb Depends        # 必须出现 libgtk-3-0t64 | libgtk-3-0
+apt-get install -s ./<包>.deb       # 模拟安装，能解析依赖即通过（不需要 root）
+```
+
+## 六、已知风险
 
 1. **`productName` 必须是 ASCII**（现为 `OneMail Wanglai`）：Debian 包名只允许小写字母、数字与 `-+._`，
    早前的 `OneMail 往来` 会让 `dpkg` 直接拒收（`无效的软件包名 ... 不允许出现字符`）。
