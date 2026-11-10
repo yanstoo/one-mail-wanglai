@@ -88,8 +88,18 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: tag,
-              name: `OneMail ${tag}`,
-              body: 'Download the installer for your operating system and architecture.',
+              name: `OneMail 往来 ${tag}`,
+              body: [
+                '下载对应系统与架构的安装包。',
+                '',
+                'Download the installer for your operating system and architecture.',
+                '',
+                '---',
+                '本分支是 [OneMail](https://github.com/zhihui-hu/one-mail) 的非官方分支（unofficial fork），',
+                '以 AGPL-3.0-only 分发；对应源码即本仓库该 tag 的代码。',
+                'This is an unofficial fork of OneMail, distributed under AGPL-3.0-only.',
+                'Corresponding source: this repository at the same tag.',
+              ].join('\n'),
               draft: false,
               prerelease: false,
               generate_release_notes: true,
@@ -97,9 +107,66 @@ jobs:
 
             return release.id
 
+  test:
+    name: Tests before release
+    needs: prepare
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.34.1
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libayatana-appindicator3-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck and unit tests
+        run: |
+          pnpm typecheck
+          pnpm test
+
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
   build:
     name: Build ${{ matrix.name }}
-    needs: prepare
+    needs: [prepare, test]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     permissions:
@@ -178,7 +245,7 @@ jobs:
         shell: bash
         run: |
           node -e "const fs=require('fs');const version=process.env.RELEASE_TAG.slice(1);for(const path of ['package.json','src-tauri/tauri.conf.json']){const json=JSON.parse(fs.readFileSync(path,'utf8'));json.version=version;fs.writeFileSync(path,JSON.stringify(json,null,2)+'\n')}"
-          node -e "const pkg=require('./package.json');console.log('Building OneMail v'+pkg.version)"
+          node -e "const pkg=require('./package.json');console.log('Building OneMail 往来 v'+pkg.version)"
 
       - name: Build and upload Tauri bundles
         uses: tauri-apps/tauri-action@v1

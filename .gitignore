@@ -24,3 +24,12 @@ dist-ssr
 *.sln
 *.sw?
 *.env**
+
+# 本地开发缓存（agent 沙箱 / 本机构建产生，勿提交）
+.devhome/
+.runtime/
+.appdata/
+.appconfig/
+.appcache/
+.tmp-home-check/
+src-tauri/.cargo/
