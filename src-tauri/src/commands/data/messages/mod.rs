@@ -209,6 +209,7 @@ fn persist_read_state(state: &AppState, message_id: i64, account_id: i64, folder
         [folder_id],
     ).map_err(database_error)?;
     transaction.commit().map_err(database_error)?;
+    crate::db::correspondents::on_read_state_changed(&connection, message_id)?;
     Ok(())
 }
 

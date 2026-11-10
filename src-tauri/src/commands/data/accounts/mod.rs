@@ -116,15 +116,18 @@ pub async fn accounts_create(
             ],
         )
         .map_err(database_error)?;
+    // 内置服务商带出默认短徽标与颜色；自定义服务商回落到「@」与主题色。
+    let (badge_label, badge_color) = crate::db::correspondents::default_badge_for_provider(&provider_key);
     connection
         .execute(
             "INSERT INTO onemail_mail_accounts (
                 provider_key, email, normalized_email, account_label, avatar_text,
+                badge_label, badge_color,
                 auth_type, imap_host, imap_port, imap_security,
                 smtp_host, smtp_port, smtp_security, smtp_auth_type, smtp_enabled,
                 encrypted_password, credential_state, status
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                       ?15, ?16, 'active')",
+                       ?15, ?16, ?17, ?18, 'active')",
             params![
                 provider_key,
                 email,
@@ -136,6 +139,8 @@ pub async fn accounts_create(
                     .unwrap_or('?')
                     .to_uppercase()
                     .to_string(),
+                badge_label,
+                badge_color,
                 auth_type,
                 imap_host,
                 imap_port,

@@ -2,7 +2,7 @@ use std::fs;
 
 use rusqlite::{params, params_from_iter, types::Value as SqlValue, Connection, OptionalExtension};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{db, mail::smtp as smtp_send, state::AppState};
@@ -233,6 +233,11 @@ pub async fn compose_send(app: AppHandle, state: State<'_, AppState>, mut input:
     let mut result = smtp_send::send_message(&state, input).await?;
     result["accountId"] = saved["accountId"].clone();
     let _ = app.emit("compose/sent", &result);
+    if let Some(account_id) = result.get("accountId").and_then(Value::as_i64) {
+        if let Some(state) = app.try_state::<crate::state::AppState>() {
+            super::correspondents::reindex_account(&state, account_id);
+        }
+    }
     Ok(result)
 }
 
@@ -246,6 +251,11 @@ pub async fn compose_retry(app: AppHandle, state: State<'_, AppState>, outbox_id
     let mut result = smtp_send::send_message(&state, outbox).await?;
     result["accountId"] = account_id;
     let _ = app.emit("compose/sent", &result);
+    if let Some(account_id) = result.get("accountId").and_then(Value::as_i64) {
+        if let Some(state) = app.try_state::<crate::state::AppState>() {
+            super::correspondents::reindex_account(&state, account_id);
+        }
+    }
     Ok(result)
 }
 

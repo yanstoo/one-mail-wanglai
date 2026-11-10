@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS onemail_mail_accounts (
   account_label TEXT NOT NULL,
   avatar_text TEXT,
   color_key TEXT,
+  badge_label TEXT,
+  badge_color TEXT,
   auth_type TEXT NOT NULL CHECK (
     auth_type IN ('oauth2', 'app_password', 'password', 'bridge', 'manual')
   ),
@@ -342,3 +344,67 @@ CREATE TABLE IF NOT EXISTS onemail_app_settings (
   value_type TEXT NOT NULL DEFAULT 'string' CHECK (value_type IN ('string', 'number', 'boolean', 'json')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
+
+-- ============================================================
+-- 往来联系人索引（v1，由 PRAGMA user_version 管理回填）
+-- 目的：把「谁和我有过来往」从运行时聚合物化成表，
+--       支撑左栏联系人列表（普通/垃圾分组）、徽标与中栏往来时间线。
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS onemail_correspondents (
+  correspondent_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  address_norm TEXT NOT NULL UNIQUE,
+  address_display TEXT NOT NULL,
+  display_name TEXT,
+  domain TEXT,
+  first_at TEXT,
+  last_at TEXT,
+  junk_last_at TEXT,
+  inbound_count INTEGER NOT NULL DEFAULT 0 CHECK (inbound_count >= 0),
+  outbound_count INTEGER NOT NULL DEFAULT 0 CHECK (outbound_count >= 0),
+  unread_count INTEGER NOT NULL DEFAULT 0 CHECK (unread_count >= 0),
+  junk_unread_count INTEGER NOT NULL DEFAULT 0 CHECK (junk_unread_count >= 0),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS onemail_correspondent_accounts (
+  correspondent_id INTEGER NOT NULL,
+  account_id INTEGER NOT NULL,
+  last_at TEXT,
+  inbound_count INTEGER NOT NULL DEFAULT 0 CHECK (inbound_count >= 0),
+  outbound_count INTEGER NOT NULL DEFAULT 0 CHECK (outbound_count >= 0),
+  unread_count INTEGER NOT NULL DEFAULT 0 CHECK (unread_count >= 0),
+  junk_unread_count INTEGER NOT NULL DEFAULT 0 CHECK (junk_unread_count >= 0),
+  PRIMARY KEY (correspondent_id, account_id),
+  FOREIGN KEY (correspondent_id) REFERENCES onemail_correspondents(correspondent_id) ON DELETE CASCADE,
+  FOREIGN KEY (account_id) REFERENCES onemail_mail_accounts(account_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS onemail_correspondent_messages (
+  correspondent_id INTEGER NOT NULL,
+  message_id INTEGER NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('mail', 'outbox')),
+  account_id INTEGER NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('in', 'out')),
+  sent_at TEXT NOT NULL,
+  subject TEXT,
+  has_attachment INTEGER NOT NULL DEFAULT 0 CHECK (has_attachment IN (0, 1)),
+  is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)),
+  is_junk INTEGER NOT NULL DEFAULT 0 CHECK (is_junk IN (0, 1)),
+  PRIMARY KEY (correspondent_id, source, message_id),
+  FOREIGN KEY (correspondent_id) REFERENCES onemail_correspondents(correspondent_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_correspondents_last_at
+  ON onemail_correspondents(last_at DESC) WHERE last_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_correspondents_junk_last_at
+  ON onemail_correspondents(junk_last_at DESC) WHERE junk_last_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_correspondent_messages_thread
+  ON onemail_correspondent_messages(correspondent_id, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_correspondent_messages_message
+  ON onemail_correspondent_messages(source, message_id);
+CREATE INDEX IF NOT EXISTS idx_correspondent_messages_account
+  ON onemail_correspondent_messages(account_id);
+CREATE INDEX IF NOT EXISTS idx_message_addresses_message
+  ON onemail_message_addresses(message_id, kind);

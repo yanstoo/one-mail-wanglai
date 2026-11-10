@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{client_log, commands::system, mail::sync as mail_sync, state::{wait_for_batch, AppState, BatchStart}};
 
@@ -84,6 +84,9 @@ pub(crate) fn publish_sync_result(app: &AppHandle, result: &Value, mode: Option<
             continue;
         };
         let changed_at = crate::db::now_iso();
+        if let Some(state) = app.try_state::<AppState>() {
+            super::correspondents::reindex_account(&state, account_id);
+        }
         let _ = app.emit(
             "sync/mailboxChanged",
             json!({

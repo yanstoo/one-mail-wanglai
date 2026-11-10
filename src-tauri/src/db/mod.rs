@@ -2,7 +2,13 @@ use rusqlite::{Connection, OpenFlags};
 
 use crate::state::AppState;
 
+pub mod correspondents;
+
 const SCHEMA_SQL: &str = include_str!("schema.sql");
+
+/// 数据库结构版本，写入 `PRAGMA user_version`。
+/// 1：往来联系人索引（三张表 + 首次全量回填）。
+const SCHEMA_VERSION: i64 = 1;
 
 pub fn initialize(state: &AppState) -> Result<(), String> {
     let connection = open(state)?;
@@ -10,6 +16,7 @@ pub fn initialize(state: &AppState) -> Result<(), String> {
         .execute_batch(SCHEMA_SQL)
         .map_err(|error| format!("初始化数据库失败：{error}"))?;
     ensure_compatibility(&connection)?;
+    apply_migrations(&connection)?;
     clear_imap_read_overrides(&connection, None)?;
     recover_interrupted_syncs(&connection)
 }
@@ -26,6 +33,18 @@ pub(crate) fn clear_imap_read_overrides(connection: &Connection, account_id: Opt
         [account_id],
     ).map_err(|error| format!("清理已完成的 IMAP 已读状态保护失败：{error}"))?;
     Ok(())
+}
+
+/// 顺序迁移：版本落后时重建联系人索引并推进 `user_version`。
+fn apply_migrations(connection: &Connection) -> Result<(), String> {
+    let version = correspondents::schema_version(connection)?;
+    if version >= SCHEMA_VERSION {
+        return Ok(());
+    }
+    if version < 1 {
+        correspondents::rebuild_all(connection)?;
+    }
+    correspondents::set_schema_version(connection, SCHEMA_VERSION)
 }
 
 fn recover_interrupted_syncs(connection: &Connection) -> Result<(), String> {
@@ -95,6 +114,8 @@ fn ensure_compatibility(connection: &Connection) -> Result<(), String> {
         "connection_state",
         "TEXT NOT NULL DEFAULT 'connected'",
     )?;
+    add_column_if_missing(connection, "onemail_mail_accounts", "badge_label", "TEXT")?;
+    add_column_if_missing(connection, "onemail_mail_accounts", "badge_color", "TEXT")?;
 
     add_column_if_missing(
         connection,
