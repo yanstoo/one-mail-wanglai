@@ -16,7 +16,7 @@ export const zhCNCommonSettings = {
   'common.ok': '知道了',
   'common.later': '稍后',
   'common.switchTheme': '切换主题',
-  'common.oneMail': 'OneMail',
+  'common.oneMail': 'OneMail 往来',
   'error.title': '应用遇到了问题',
   'error.description': '当前页面无法正常显示。请再试一次，或退出应用后重新打开。',
   'error.retry': '再试一次',

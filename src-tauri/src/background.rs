@@ -64,7 +64,7 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
     let sync_menu_item = sync_all.clone();
     let mut tray = TrayIconBuilder::with_id("onemail")
         .menu(&menu)
-        .tooltip("OneMail")
+        .tooltip("OneMail 往来")
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "toggle" => toggle_main_window(app),
             "compose" => {

@@ -16,7 +16,7 @@ export const enUSCommonSettings = {
   'common.ok': 'Got it',
   'common.later': 'Later',
   'common.switchTheme': 'Switch theme',
-  'common.oneMail': 'OneMail',
+  'common.oneMail': 'OneMail 往来',
   'error.title': 'Something went wrong',
   'error.description': 'This page could not be displayed. Try again, or quit and reopen the app.',
   'error.retry': 'Try again',

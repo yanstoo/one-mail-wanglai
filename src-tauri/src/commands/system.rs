@@ -265,7 +265,7 @@ pub async fn system_send_notification(
                 notification.app_id(&app_id);
             }
             #[cfg(target_os = "linux")]
-            notification.appname("OneMail");
+            notification.appname("OneMail 往来");
             if let Some(sound) = sound.as_deref() {
                 notification.sound_name(sound);
             }

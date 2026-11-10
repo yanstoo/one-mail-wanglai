@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OneMail",
+  "productName": "OneMail 往来",
   "version": "26.806.2208",
-  "identifier": "com.huzhihui.onemail",
+  "identifier": "com.huzhihui.onemail.wanglai",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:27502",

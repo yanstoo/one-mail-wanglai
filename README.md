@@ -1,4 +1,4 @@
-# OneMail
+# OneMail 往来
 
 <p align="left">
   <img src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white" alt="Tauri 2" />
@@ -11,11 +11,18 @@
   <img src="https://img.shields.io/badge/pnpm-10.34-F69220?logo=pnpm&logoColor=white" alt="pnpm 10.34" />
 </p>
 
+> **本仓库是 OneMail 的非官方分支（unofficial fork）**
+>
+> - 上游项目：[zhihui-hu/one-mail](https://github.com/zhihui-hu/one-mail)（Copyright (C) Huzhihui）
+> - 本分支：OneMail 往来 —— 把「按邮箱分组的收件箱」改成「按来往联系人归并的往来时间线」，差异见 [FORK.md](./FORK.md)
+> - 授权：[AGPL-3.0-only](./LICENSE)（与上游一致），版权与修改声明见 [NOTICE](./NOTICE)
+> - 本分支为个人维护，问题请在本仓库反馈，不要打扰上游作者
+
 OneMail 是一个本地优先的桌面邮件客户端，使用 Tauri 2、Rust、React 和 TypeScript 构建。邮件同步、发送、OAuth、SQLite 数据访问和可选 AI 助手由 Rust 端提供，界面使用 React + Vite。
 
 **语言**：中文 | [English](./README.en.md)
 
-**项目主页 / 下载页**：[https://zhihui-hu.github.io/one-mail/](https://zhihui-hu.github.io/one-mail/)
+**上游项目主页 / 下载页**：[https://zhihui-hu.github.io/one-mail/](https://zhihui-hu.github.io/one-mail/)（上游内容，非本分支发布）
 
 ## ✨ 功能特性
 

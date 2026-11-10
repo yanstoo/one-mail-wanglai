@@ -6,7 +6,7 @@ use zeroize::{Zeroize, Zeroizing};
 use crate::{db, state::AppState};
 
 const AI_SETTINGS_KEY: &str = "ai_settings";
-const AI_KEYRING_SERVICE: &str = "com.huzhihui.onemail.ai";
+const AI_KEYRING_SERVICE: &str = "com.huzhihui.onemail.wanglai.ai";
 const AI_KEYRING_USER: &str = "default-api-key";
 
 #[derive(Clone, Deserialize, PartialEq, Eq, Serialize)]

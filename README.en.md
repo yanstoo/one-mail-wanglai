@@ -1,4 +1,4 @@
-# OneMail
+# OneMail Wanglai
 
 <p align="left">
   <img src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white" alt="Tauri 2" />
@@ -11,11 +11,18 @@
   <img src="https://img.shields.io/badge/pnpm-10.34-F69220?logo=pnpm&logoColor=white" alt="pnpm 10.34" />
 </p>
 
+> **This repository is an unofficial fork of OneMail.**
+>
+> - Upstream: [zhihui-hu/one-mail](https://github.com/zhihui-hu/one-mail) (Copyright (C) Huzhihui)
+> - This fork: OneMail Wanglai — reorganizes the mailbox into a per-correspondent timeline; see [FORK.md](./FORK.md) for the diff
+> - License: [AGPL-3.0-only](./LICENSE) (same as upstream); attribution in [NOTICE](./NOTICE)
+> - Maintained independently. Please report issues here, not to the upstream author.
+
 OneMail is a local-first desktop mail client built with Tauri 2, Rust, React, and TypeScript. Mail sync, sending, OAuth, SQLite access, and the optional AI assistant run in Rust, while the interface uses React and Vite.
 
 **Language**: [中文](./README.md) | English
 
-**Website / Downloads**: [https://zhihui-hu.github.io/one-mail/](https://zhihui-hu.github.io/one-mail/)
+**Upstream website / downloads**: [https://zhihui-hu.github.io/one-mail/](https://zhihui-hu.github.io/one-mail/) (upstream, not this fork)
 
 ## Features
 

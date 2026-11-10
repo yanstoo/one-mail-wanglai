@@ -1,0 +1,28 @@
+OneMail 往来
+=============
+
+本仓库是 OneMail 的非官方分支（unofficial fork）。
+
+上游项目
+--------
+- 名称：OneMail
+- 仓库：https://github.com/zhihui-hu/one-mail
+- 版权：Copyright (C) Huzhihui
+- 许可：GNU Affero General Public License v3.0 only (AGPL-3.0-only)
+
+本分支
+------
+- 仓库：https://github.com/yanstoo/one-mail
+- 版权：修改与新增部分 Copyright (C) 2026 yanst
+- 许可：AGPL-3.0-only（与上游一致，全文见 LICENSE）
+
+修改说明
+--------
+本分支在原项目基础上调整了界面与数据组织方式，主要改动为「按来往联系人归并的往来时间线」，
+新增跨全部邮箱账号的联系人索引表，并将写信界面从浮层改为右侧栏内嵌。
+逐条差异与上游同步策略见 FORK.md。
+
+分发义务
+--------
+依据 AGPL-3.0 第 5 条，分发本程序的修改版本时须保留上述版权声明与本说明，并向接收者提供完整对应源码。
+依据 AGPL-3.0 第 13 条，若通过网络向用户提供本程序的服务，须向这些用户提供获取对应源码的方式。
