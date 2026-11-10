@@ -12,12 +12,16 @@ export function CorrespondentMessageReader({
   message,
   detail,
   loading,
-  error
+  error,
+  onReply,
+  onReplyAll
 }: {
   message: CorrespondentThreadMessage | null
   detail: MailMessageDetail | null
   loading: boolean
   error: string | null
+  onReply: () => void
+  onReplyAll: () => void
 }): React.JSX.Element {
   if (!message) {
     return (
@@ -36,10 +40,18 @@ export function CorrespondentMessageReader({
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-background">
       <header className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-3 text-[12px]">
-        <button type="button" className="flex items-center gap-1 font-semibold hover:text-primary">
+        <button
+          type="button"
+          onClick={onReply}
+          className="flex items-center gap-1 font-semibold hover:text-primary"
+        >
           <CornerUpLeft className="size-3.5" aria-hidden="true" /> 回复
         </button>
-        <button type="button" className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
+        <button
+          type="button"
+          onClick={onReplyAll}
+          className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+        >
           <CornerUpRight className="size-3.5" aria-hidden="true" /> 回复全部
         </button>
         <button type="button" className="flex items-center gap-1 text-muted-foreground hover:text-foreground">

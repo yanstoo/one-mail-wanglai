@@ -1,7 +1,11 @@
 import * as React from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PenLine, RefreshCw } from 'lucide-react'
+import { toast } from 'sonner'
 
+import { MailComposer } from '@renderer/components/mail/mail-composer'
+import { createComposeDraft, loadAccounts, saveComposedDraft, sendComposedMessage } from '@renderer/lib/api'
+import type { ComposeDraft, ComposeKind, SendMessageInput } from '@renderer/lib/api/types'
 import type { CorrespondentGroup, CorrespondentThreadMessage, MailMessageDetail } from '@renderer/shared/types'
 
 import { CorrespondentList } from './correspondent-list'
@@ -11,24 +15,6 @@ import { useCorrespondentGroupCounts, useCorrespondentList, useCorrespondentThre
 
 function messageKey(message: CorrespondentThreadMessage): string {
   return `${message.source}:${message.messageId}`
-}
-
-/** 阶段性占位：下一步把 MailComposer 改成 pane 内嵌 variant 后替换。 */
-function ComposePlaceholder({ onClose }: { onClose: () => void }): React.JSX.Element {
-  return (
-    <section className="flex min-h-0 flex-1 flex-col bg-background">
-      <header className="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
-        <span className="text-[12px] font-semibold">写信</span>
-        <button type="button" onClick={onClose} className="text-[11px] text-muted-foreground hover:text-foreground">
-          关闭
-        </button>
-      </header>
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
-        <PenLine className="size-8 opacity-40" aria-hidden="true" />
-        <p className="text-[11.5px]">写信界面将在此内嵌打开（下一步接入 MailComposer）</p>
-      </div>
-    </section>
-  )
 }
 
 export function CorrespondentsWorkspace(): React.JSX.Element {
@@ -41,12 +27,18 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
   const [detail, setDetail] = React.useState<MailMessageDetail | null>(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
   const [detailError, setDetailError] = React.useState<string | null>(null)
-  const [composeOpen, setComposeOpen] = React.useState(false)
   const [refreshing, setRefreshing] = React.useState(false)
+
+  // 写信状态（内嵌右栏）
+  const [composeOpen, setComposeOpen] = React.useState(false)
+  const [composeDraft, setComposeDraft] = React.useState<ComposeDraft | null>(null)
+  const [composePending, setComposePending] = React.useState(false)
 
   const { counts } = useCorrespondentGroupCounts()
   const list = useCorrespondentList(group, deferredKeyword)
   const { thread, loading: threadLoading } = useCorrespondentThread(selectedId)
+  const accountsQuery = useQuery({ queryKey: ['accounts'], queryFn: loadAccounts, staleTime: 60_000 })
+  const accounts = accountsQuery.data ?? []
 
   // 选中联系人变化时清空右侧
   React.useEffect(() => {
@@ -86,7 +78,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
     }
   }, [selectedMessage])
 
-  // 打开未读邮件时回写已读
+  // 打开未读邮件时回写已读（会触发索引重算与角标刷新）
   React.useEffect(() => {
     if (!selectedMessage || selectedMessage.source !== 'mail' || selectedMessage.isRead) return
     void window.api.messages.setReadState(selectedMessage.messageId, true).catch(() => null)
@@ -106,6 +98,88 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
       .finally(() => setRefreshing(false))
   }
 
+  /** 打开内嵌写信：回复/回复全部需要一条 mail 来源的邮件，新邮件不需要。 */
+  const startCompose = React.useCallback(
+    async (kind: ComposeKind, related?: CorrespondentThreadMessage | null): Promise<void> => {
+      const accountId =
+        related?.accountId ?? accounts[0]?.accountId ?? undefined
+      if (!accountId) {
+        toast.error('还没有可用的发件账号，请先在设置里添加邮箱。')
+        return
+      }
+      const relatedMessageId =
+        related && related.source === 'mail' && (kind === 'reply' || kind === 'reply_all')
+          ? related.messageId
+          : undefined
+      const effectiveKind: ComposeKind =
+        (kind === 'reply' || kind === 'reply_all') && relatedMessageId === undefined ? 'new' : kind
+
+      setComposePending(true)
+      try {
+        const draft = await createComposeDraft({
+          kind: effectiveKind,
+          accountId,
+          relatedMessageId
+        })
+        setComposeDraft(draft)
+        setComposeOpen(true)
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '创建草稿失败')
+      } finally {
+        setComposePending(false)
+      }
+    },
+    [accounts]
+  )
+
+  const handleSend = React.useCallback(
+    async (input: SendMessageInput): Promise<void> => {
+      setComposePending(true)
+      try {
+        const result = await sendComposedMessage(input)
+        if (result.warning) toast.warning(result.warning)
+        else toast.success('邮件已发送')
+        setComposeOpen(false)
+        setComposeDraft(null)
+        void queryClient.invalidateQueries({ queryKey: ['correspondents'] })
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '发送失败')
+      } finally {
+        setComposePending(false)
+      }
+    },
+    [queryClient]
+  )
+
+  const handleSaveDraft = React.useCallback(
+    async (input: SendMessageInput): Promise<void> => {
+      setComposePending(true)
+      try {
+        await saveComposedDraft(input)
+        toast.success('已保存草稿')
+        setComposeOpen(false)
+        setComposeDraft(null)
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '保存草稿失败')
+      } finally {
+        setComposePending(false)
+      }
+    },
+    []
+  )
+
+  const handleDiscardDraft = React.useCallback(async (draftId: number): Promise<void> => {
+    try {
+      await window.api.compose.deleteDraft(draftId)
+    } catch {
+      // 草稿可能尚未落库，忽略
+    }
+    setComposeOpen(false)
+    setComposeDraft(null)
+  }, [])
+
+  const replyTarget = selectedMessage ?? thread?.messages[0] ?? null
+
   return (
     <div className="flex h-screen min-h-0 flex-col bg-background">
       <header className="app-titlebar app-drag-region flex h-11 shrink-0 items-center gap-3 border-b border-border px-[var(--app-titlebar-left-offset)] pr-3">
@@ -122,7 +196,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
         </button>
         <button
           type="button"
-          onClick={() => setComposeOpen(true)}
+          onClick={() => void startCompose('new')}
           className="flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11.5px] font-semibold text-primary-foreground hover:opacity-90"
         >
           <PenLine className="size-3.5" aria-hidden="true" />
@@ -145,6 +219,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
           onSelect={(correspondentId) => {
             setSelectedId(correspondentId)
             setComposeOpen(false)
+            setComposeDraft(null)
           }}
           loading={list.loading}
           nextCursor={list.nextCursor}
@@ -156,17 +231,36 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
           loading={threadLoading}
           selectedKey={selectedMessage ? messageKey(selectedMessage) : null}
           onSelectMessage={setSelectedMessage}
-          onReply={() => setComposeOpen(true)}
+          onReply={() => void startCompose(replyTarget ? 'reply' : 'new', replyTarget)}
         />
 
         {composeOpen ? (
-          <ComposePlaceholder onClose={() => setComposeOpen(false)} />
+          <section className="flex min-h-0 flex-1 flex-col bg-background">
+            <MailComposer
+              open={composeOpen}
+              variant="inline"
+              accounts={accounts}
+              draft={composeDraft}
+              pending={composePending}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setComposeOpen(false)
+                  setComposeDraft(null)
+                }
+              }}
+              onSend={handleSend}
+              onSaveDraft={handleSaveDraft}
+              onDiscardDraft={handleDiscardDraft}
+            />
+          </section>
         ) : (
           <CorrespondentMessageReader
             message={selectedMessage}
             detail={detail}
             loading={detailLoading}
             error={detailError}
+            onReply={() => void startCompose('reply', replyTarget)}
+            onReplyAll={() => void startCompose('reply_all', replyTarget)}
           />
         )}
       </div>
@@ -176,7 +270,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
         <span>普通未读 {counts?.normal.unread ?? 0}</span>
         <span>垃圾未读 {counts?.junk.unread ?? 0}</span>
         <div className="flex-1" />
-        <span>阶段 2：左栏 + 中栏已接入索引，写信待接入</span>
+        <span>写信已内嵌（MailComposer inline）</span>
       </footer>
     </div>
   )

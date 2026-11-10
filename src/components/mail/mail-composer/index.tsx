@@ -59,6 +59,11 @@ type MailComposerProps = {
   accounts: Account[]
   draft: ComposeDraft | null
   pending?: boolean
+  /**
+   * floating：右下角浮层（邮件页沿用）；
+   * inline：嵌进右栏的写信面板（往来三栏页使用，不定位、不投影）。
+   */
+  variant?: 'floating' | 'inline'
   onOpenChange: (open: boolean) => void
   onSend: (input: SendMessageInput) => Promise<void>
   onSaveDraft: (input: SendMessageInput) => Promise<void>
@@ -70,6 +75,7 @@ export function MailComposer({
   accounts,
   draft,
   pending = false,
+  variant = 'floating',
   onOpenChange,
   onSend,
   onSaveDraft,
@@ -217,8 +223,12 @@ export function MailComposer({
         aria-modal="false"
         aria-labelledby="mail-composer-title"
         className={cn(
-          'app-no-drag fixed right-5 bottom-5 z-40 flex max-h-[calc(100vh-3rem)] w-[min(calc(100vw-2rem),38rem)] flex-col overflow-hidden rounded-xl border border-black/10 bg-background shadow-[0_24px_70px_rgb(0_0_0/0.28)] dark:border-white/12',
-          expanded &&
+          'app-no-drag flex min-h-0 flex-col overflow-hidden bg-background',
+          variant === 'inline'
+            ? 'h-full w-full flex-1 border-0 shadow-none'
+            : 'fixed right-5 bottom-5 z-40 max-h-[calc(100vh-3rem)] w-[min(calc(100vw-2rem),38rem)] rounded-xl border border-black/10 shadow-[0_24px_70px_rgb(0_0_0/0.28)] dark:border-white/12',
+          variant === 'floating' &&
+            expanded &&
             'top-8 bottom-8 w-[min(calc(100vw-2rem),56rem)] sm:right-8 sm:w-[min(calc(100vw-4rem),56rem)]'
         )}
       >
@@ -227,24 +237,26 @@ export function MailComposer({
             {t('mail.composer.newMessage')}
           </div>
           <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={
-                    expanded ? t('mail.composer.restoreWindow') : t('mail.composer.expandWindow')
-                  }
-                  onClick={() => setExpanded((value) => !value)}
-                >
-                  {expanded ? <Minimize2 /> : <Maximize2 />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {expanded ? t('mail.composer.restoreWindow') : t('mail.composer.expandWindow')}
-              </TooltipContent>
-            </Tooltip>
+            {variant === 'floating' ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={
+                      expanded ? t('mail.composer.restoreWindow') : t('mail.composer.expandWindow')
+                    }
+                    onClick={() => setExpanded((value) => !value)}
+                  >
+                    {expanded ? <Minimize2 /> : <Maximize2 />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {expanded ? t('mail.composer.restoreWindow') : t('mail.composer.expandWindow')}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
