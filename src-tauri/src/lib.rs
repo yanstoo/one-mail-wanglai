@@ -41,6 +41,23 @@ pub fn send_bundled_notification(
         .map_err(|error| error.to_string())
 }
 
+/// 启动后延迟预热设置窗口。
+///
+/// 设置窗口加载的是同一个 SPA 包，首次创建要付整包解析 + 首屏渲染的成本
+/// （dev 下还要走 Vite 逐模块编译）。提前在后台建好并保持隐藏，
+/// 用户真正点「设置」时只需要 show，几乎是即时的。
+fn prewarm_settings_window(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Err(error) = system::settings_window(&handle, false) {
+                eprintln!("OneMail settings prewarm failed: {error}");
+            }
+        });
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     rustls::crypto::ring::default_provider()
@@ -78,6 +95,7 @@ pub fn run() {
             let _ = client_log::write(app.handle(), "INFO Client started");
             app.manage(state);
             background::start(app.handle())?;
+            prewarm_settings_window(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {

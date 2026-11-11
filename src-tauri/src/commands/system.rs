@@ -415,30 +415,62 @@ pub fn accounts_open_add_window(app: AppHandle) -> Result<bool, String> {
     Ok(true)
 }
 
+/// 创建（或复用）设置窗口。
+///
+/// 设置窗口关闭时只隐藏、不销毁：WebView 首次创建要加载整个 SPA 包
+/// （dev 下还要经过 Vite 逐模块编译），每次重建都要重付这份成本，
+/// 所以打开一次后保持隐藏状态，后续 show 是毫秒级。
+pub(crate) fn settings_window(app: &AppHandle, visible: bool) -> Result<tauri::WebviewWindow, String> {
+    if let Some(window) = app.get_webview_window("settings") {
+        return Ok(window);
+    }
+    let started = std::time::Instant::now();
+    let window = WebviewWindowBuilder::new(
+        app,
+        "settings",
+        WebviewUrl::App("index.html#/settings?section=general".into()),
+    )
+    .title("设置 - OneMail")
+    .inner_size(720.0, 540.0)
+    .min_inner_size(640.0, 480.0)
+    .center()
+    .visible(visible)
+    .build()
+    .map_err(|error| format!("创建设置窗口失败：{error}"))?;
+
+    // 关闭 = 隐藏，保住已加载的 WebView
+    let handle = window.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = handle.hide();
+        }
+    });
+
+    let _ = crate::client_log::write(
+        app,
+        &format!(
+            "INFO Settings window created in {}ms (visible={visible})",
+            started.elapsed().as_millis()
+        ),
+    );
+    Ok(window)
+}
+
 #[tauri::command]
 pub fn settings_open_window(app: AppHandle, section: Option<String>) -> Result<bool, String> {
     let section = match section.as_deref() {
         Some("about") => "about",
         _ => "general",
     };
-    if let Some(window) = app.get_webview_window("settings") {
-        window.show().and_then(|_| window.set_focus())
-            .map_err(|error| format!("打开设置窗口失败：{error}"))?;
-        app.emit_to("settings", "settings/showSection", section)
-            .map_err(|error| error.to_string())?;
-        return Ok(true);
+    let window = settings_window(&app, false)?;
+    window
+        .show()
+        .and_then(|_| window.set_focus())
+        .map_err(|error| format!("打开设置窗口失败：{error}"))?;
+    if app.get_webview_window("settings").is_some() {
+        let _ = app.emit_to("settings", "settings/showSection", section);
     }
-    WebviewWindowBuilder::new(
-        &app,
-        "settings",
-        WebviewUrl::App(format!("index.html#/settings?section={section}").into()),
-    )
-    .title("设置 - OneMail")
-    .inner_size(720.0, 540.0)
-    .min_inner_size(640.0, 480.0)
-    .center()
-    .build()
-    .map_err(|error| format!("创建设置窗口失败：{error}"))?;
     Ok(true)
 }
 
