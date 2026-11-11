@@ -136,7 +136,9 @@ export function createDesktopApi(): OneMailApi {
       openDevtools: () => command('system_open_devtools'),
       revealPath: (path) => command('system_reveal_path', { path }),
       openExternal: (url) => command('system_open_external', { url }),
-      openSettings: (section) => command('settings_open_window', { section: section ?? 'general' })
+      openSettings: (section) => command('settings_open_window', { section: section ?? 'general' }),
+      getGoogleClientId: () => command('oauth_google_client_id'),
+      setGoogleClientId: (clientId) => command('oauth_set_google_client_id', { clientId })
     }
   }
 }

@@ -8,6 +8,7 @@ import { useI18n } from '@renderer/lib/i18n'
 import { cn } from '@renderer/lib/utils'
 import type { AccountFormValues } from './account-form-types'
 import { AccountFormField } from './account-form-field'
+import { GoogleClientIdField } from './google-client-id-field'
 
 type GmailAccountFormProps = {
   form: UseFormReturn<AccountFormValues>
@@ -80,9 +81,12 @@ export function GmailAccountForm({ form }: GmailAccountFormProps): React.JSX.Ele
       </FieldSet>
 
       {usesOAuth ? (
-        <p className="text-xs leading-5 text-muted-foreground">
-          {t('account.form.googleLoginDescription')}
-        </p>
+        <>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {t('account.form.googleLoginDescription')}
+          </p>
+          <GoogleClientIdField />
+        </>
       ) : (
         <AccountFormField
           id="account-password"

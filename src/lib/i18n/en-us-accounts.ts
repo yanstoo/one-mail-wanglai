@@ -1,4 +1,12 @@
 export const enUSAccounts = {
+  'account.form.googleClientId': 'Google OAuth client ID',
+  'account.form.googleClientIdHelp':
+    'OneMail uses your own Google desktop OAuth client. Create an OAuth client of type "Desktop app" in Google Cloud Console and paste its client ID here; it takes effect immediately after saving.',
+  'account.form.googleClientIdPlaceholder': '1234567890-xxxxxxxx.apps.googleusercontent.com',
+  'account.form.googleClientIdSave': 'Save',
+  'account.form.googleClientIdSaved': 'Google client ID saved',
+  'account.form.googleClientIdClear': 'Clear',
+  'account.form.openGoogleConsole': 'Open Google Cloud Console',
   'account.all.name': 'All accounts',
   'account.all.address': 'Unified inbox',
   'account.empty.name': 'No account',

@@ -118,7 +118,8 @@ impl OAuthProvider for GoogleOAuthProvider {
             .ok()
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| {
-                "缺少 ONEMAIL_GOOGLE_CLIENT_ID，请配置 Google 桌面 OAuth 客户端。".to_string()
+                "还没有配置 Google OAuth 客户端 ID。请在「添加账号 → Gmail → 使用 Google 登录」下方填写你自己的 Google 桌面客户端 ID（Google Cloud 控制台 → API 和服务 → 凭据 → 创建 OAuth 客户端 ID → 桌面应用），或改用「应用专用密码」登录。"
+                    .to_string()
             })
     }
 

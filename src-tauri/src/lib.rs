@@ -74,6 +74,7 @@ pub fn run() {
             if let Err(error) = client_log::cleanup(app.handle(), client_log::retention_days(&state)) {
                 eprintln!("OneMail log cleanup failed: {error}");
             }
+            data::oauth_config::apply_stored_google_client_id(&state);
             let _ = client_log::write(app.handle(), "INFO Client started");
             app.manage(state);
             background::start(app.handle())?;
@@ -133,6 +134,8 @@ pub fn run() {
             data::messages::messages_set_read_state,
             data::messages::messages_set_junk_override,
             data::messages::messages_set_deleted,
+            data::oauth_config::oauth_google_client_id,
+            data::oauth_config::oauth_set_google_client_id,
             data::compose::compose_create_reply_draft,
             data::compose::compose_create_forward_draft,
             data::compose::compose_send,

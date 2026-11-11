@@ -98,5 +98,9 @@ export type OneMailApi = {
     revealPath: (path: string) => Promise<boolean>
     openExternal: (url: string) => Promise<boolean>
     openSettings: (section?: string) => Promise<boolean>
+    /** Google OAuth 客户端 ID：source 为 env / stored / none */
+    getGoogleClientId: () => Promise<{ clientId: string | null; source: 'env' | 'stored' | 'none' }>
+    /** 传 null 表示清除已保存的值 */
+    setGoogleClientId: (clientId: string | null) => Promise<{ clientId: string | null; saved: boolean }>
   }
 }

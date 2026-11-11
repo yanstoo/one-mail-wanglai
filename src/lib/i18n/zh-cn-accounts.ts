@@ -1,4 +1,12 @@
 export const zhCNAccounts = {
+  'account.form.googleClientId': 'Google OAuth 客户端 ID',
+  'account.form.googleClientIdHelp':
+    'OneMail 使用你自己的 Google 桌面 OAuth 客户端。在 Google Cloud 控制台创建「桌面应用」类型的 OAuth 客户端 ID 后粘贴到这里；保存后立即生效，无需重启。',
+  'account.form.googleClientIdPlaceholder': '1234567890-xxxxxxxx.apps.googleusercontent.com',
+  'account.form.googleClientIdSave': '保存',
+  'account.form.googleClientIdSaved': '已保存 Google 客户端 ID',
+  'account.form.googleClientIdClear': '清除',
+  'account.form.openGoogleConsole': '打开 Google Cloud 控制台',
   'account.all.name': '全部账号',
   'account.all.address': '统一收件箱',
   'account.empty.name': '暂无账号',
