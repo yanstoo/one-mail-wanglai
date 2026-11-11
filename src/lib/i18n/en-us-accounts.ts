@@ -32,10 +32,12 @@ export const enUSAccounts = {
   'account.form.email': 'Email address',
   'account.form.authMethod': 'Sign-in method',
   'account.form.googleLogin': 'Sign in with Google',
+  'account.form.gmailAppPasswordRecommended':
+    'App password (recommended, no Google review needed)',
   'account.form.gmailAppPassword': 'Use an app password',
   'account.form.advancedOptions': 'Advanced options',
   'account.form.googleLoginDescription':
-    'The system browser opens for Google authorization. Your email address is read automatically.',
+    'The system browser opens for Google authorization. Gmail mail scopes are Google "restricted scopes", so you must supply your own Google desktop OAuth client ID below. For personal use, an app password is simpler and needs no Google setup.',
   'account.form.password': 'Password',
   'account.form.appPassword': 'App password',
   'account.form.appSpecificPassword': 'App-specific password',

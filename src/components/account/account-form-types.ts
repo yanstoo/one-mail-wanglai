@@ -50,7 +50,7 @@ export const providerPresets: ProviderPreset[] = [
     kind: 'gmail',
     labelKey: 'account.provider.gmail',
     providerKey: 'gmail',
-    authType: 'oauth2',
+    authType: 'app_password',
     imapHost: 'imap.gmail.com',
     imapPort: 993,
     imapSecurity: 'ssl_tls',

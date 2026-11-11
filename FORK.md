@@ -48,3 +48,27 @@ git cherry-pick <commit>                                                        
 
 - 本分支的数据库版本会逐渐与新上游不同，两边备份（`.onemail`）不建议互换导入。
 - 上游官网与下载页（`docs/index.html`）仍是上游内容，本分支尚未替换。
+
+## Google OAuth 的现实约束（选型依据）
+
+Gmail 的邮件 scope（`https://mail.google.com/`）属于 Google 的**受限范围**，因此：
+
+| 方案 | 成本 | 适用 |
+|---|---|---|
+| **应用专用密码**（默认选项） | 0，无需任何 Google 配置 | 个人/小范围使用，推荐 |
+| 自备 OAuth 客户端 ID（应用内填写或编译期内置） | 0（自建 Cloud 项目，免费） | 想要「浏览器点一下即登录」的个人用户 |
+| Testing 模式公开分发 | 0，但限 100 个测试用户，且 refresh token **7 天过期** | 仅自用/内部 |
+| 正式验证 + 每年 CASA Tier 2 评估 | 约 $540–3000/年（按 OAuth client 计），需每年重做 | 面向公众分发、要长期免重登 |
+
+参考：GNOME 因 evolution-data-server / gnome-online-accounts 使用受限 scope，必须每年做 CASA
+评估（<https://gitlab.gnome.org/Teams/Board/-/work_items/835>）；Herald 等桌面邮件客户端的做法是
+把自建的 client id/secret **编进发布二进制**（desktop public client 的 secret 不是安全边界），
+源码构建用环境变量覆盖（<https://github.com/herald-email/herald-mail-app>）。
+
+本分支的做法：
+- 默认走应用专用密码，零配置可用；
+- 支持三种提供 client id 的方式，优先级为「运行时环境变量 > 编译期内置（`ONEMAIL_GOOGLE_CLIENT_ID` 在构建时注入）> 应用内填写」。
+
+> 不建议复用 Thunderbird 等他人项目的 client id：违反 Google API 服务用户数据政策，
+> 可能被 Google 封禁或限流，且同意屏幕会显示成别人的应用名。
+

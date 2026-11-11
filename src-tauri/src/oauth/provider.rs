@@ -114,9 +114,16 @@ impl OAuthProvider for GoogleOAuthProvider {
     }
 
     fn client_id(&self) -> Result<String, String> {
-        std::env::var("ONEMAIL_GOOGLE_CLIENT_ID")
+        // 优先级：运行时环境变量 > 编译期内置（发布包可自带）> 应用内保存（见 oauth_config）
+        let runtime = std::env::var("ONEMAIL_GOOGLE_CLIENT_ID")
             .ok()
-            .filter(|value| !value.trim().is_empty())
+            .filter(|value| !value.trim().is_empty());
+        let baked = option_env!("ONEMAIL_GOOGLE_CLIENT_ID")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        runtime
+            .or(baked)
             .ok_or_else(|| {
                 "还没有配置 Google OAuth 客户端 ID。请在「添加账号 → Gmail → 使用 Google 登录」下方填写你自己的 Google 桌面客户端 ID（Google Cloud 控制台 → API 和服务 → 凭据 → 创建 OAuth 客户端 ID → 桌面应用），或改用「应用专用密码」登录。"
                     .to_string()

@@ -73,7 +73,7 @@ export function GmailAccountForm({ form }: GmailAccountFormProps): React.JSX.Ele
                 )}
               >
                 <RadioGroupItem id="gmail-app-password" value="app_password" />
-                {t('account.form.gmailAppPassword')}
+                {t('account.form.gmailAppPasswordRecommended')}
               </FieldLabel>
             </RadioGroup>
           )}

@@ -32,10 +32,12 @@ export const zhCNAccounts = {
   'account.form.email': '邮箱地址',
   'account.form.authMethod': '登录方式',
   'account.form.googleLogin': '使用 Google 登录',
+  'account.form.gmailAppPasswordRecommended':
+    '应用专用密码（推荐，无需 Google 审核）',
   'account.form.gmailAppPassword': '使用应用专用密码',
   'account.form.advancedOptions': '高级选项',
   'account.form.googleLoginDescription':
-    '将打开系统浏览器完成 Google 授权，邮箱地址会自动读取。',
+    '将打开系统浏览器完成 Google 授权。注意：Gmail 的邮件权限属于 Google「受限范围」，需要自备一个 Google 桌面 OAuth 客户端 ID（下方填写）。如果只是自己用，推荐改用「应用专用密码」，无需任何 Google 配置。',
   'account.form.password': '密码',
   'account.form.appPassword': '应用密码',
   'account.form.appSpecificPassword': 'App 专用密码',
