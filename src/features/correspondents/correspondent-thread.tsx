@@ -3,6 +3,7 @@ import { Paperclip, Plus, Reply } from 'lucide-react'
 
 import { ContextMenu, useContextMenu } from '@renderer/components/context-menu'
 import { formatRelativeTime } from '@renderer/components/mail/date-format'
+import { subjectKey, useTranslation } from './use-translation'
 import { cn } from '@renderer/lib/utils'
 import type {
   CorrespondentProfile,
@@ -80,6 +81,10 @@ function Bubble({
   onReply: () => void
 }): React.JSX.Element {
   const { menu, open, close } = useContextMenu()
+  const translation = useTranslation()
+  const translationKey = subjectKey(message.source, message.messageId)
+  const translatedSubject = translation.translationOf(translationKey)
+  const translating = translation.pendingKey === translationKey
   const mine = message.direction === 'out'
   const subject = message.subject?.trim() || '(无主题)'
   // 只有收到的邮件才有未读概念；发件箱记录一律按已读展示
@@ -89,7 +94,16 @@ function Bubble({
       <button
         type="button"
         onClick={onSelect}
-        onContextMenu={(event) => open(event, [{ label: '回复', onSelect: onReply }])}
+        onContextMenu={(event) =>
+          open(event, [
+            { label: '回复', onSelect: onReply },
+            {
+              label: translating ? '翻译中…' : translatedSubject ? '收起译文' : '翻译标题',
+              disabled: translating,
+              onSelect: () => void translation.translate(translationKey, subject)
+            }
+          ])
+        }
         className={cn(
           'flex max-w-[86%] items-center gap-1.5 rounded-[11px] px-3 py-1.5 text-left text-[12px] leading-snug',
           mine
@@ -124,6 +138,11 @@ function Bubble({
         {message.isJunk ? ' · 垃圾邮件' : ''}
         {unread ? ' · 未读' : ''}
       </span>
+      {translatedSubject ? (
+        <span className={cn('mt-0.5 max-w-[86%] px-1 text-[10.5px] text-primary/80', mine && 'text-right')}>
+          {translatedSubject}
+        </span>
+      ) : null}
       <ContextMenu menu={menu} onClose={close} />
     </div>
   )

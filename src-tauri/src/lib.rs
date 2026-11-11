@@ -6,6 +6,7 @@ mod db;
 mod mail;
 mod oauth;
 mod state;
+mod translate;
 
 use commands::{backup, data, system};
 use state::AppState;
@@ -155,6 +156,9 @@ pub fn run() {
             data::messages::messages_set_deleted,
             data::oauth_config::oauth_google_client_id,
             data::oauth_config::oauth_set_google_client_id,
+            data::translate::translate_text,
+            data::translate::translate_settings_get,
+            data::translate::translate_settings_save,
             data::compose::compose_create_reply_draft,
             data::compose::compose_create_forward_draft,
             data::compose::compose_send,

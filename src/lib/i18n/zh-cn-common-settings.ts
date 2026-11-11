@@ -1,4 +1,5 @@
 export const zhCNCommonSettings = {
+  'settings.translate': '翻译',
   'common.cancel': '取消',
   'common.loading': '加载中...',
   'common.settings': '设置',

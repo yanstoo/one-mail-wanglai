@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { BadgeInfo, Bot, DatabaseBackup, RefreshCcw } from 'lucide-react'
+import { BadgeInfo, Bot, DatabaseBackup, RefreshCcw, Languages } from 'lucide-react'
 import * as React from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import {
@@ -21,11 +21,13 @@ import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import type{ AppSettings, AppUpdateStatus, AiSettings, AiSettingsInput, BackupImportResult, BackupImportSource, BackupSyncDownloadResult, BackupSyncSettings, SettingsUpdateInput, SystemInfo } from '@renderer/shared/types'
 import { useI18n, type TranslationKey } from '@renderer/lib/i18n'
 import { AiSettingsForm } from './ai-settings'
+import { TranslationSettings } from './translation-settings'
 import { GeneralSettingsForm } from './general-settings'
 import { BackupSettings, formatImportResultMessage, getBackupActionErrorMessage } from './backup-settings'
 import { AboutSettings } from './about-settings'
 import { createSettingsSchema, toFormValues, areSettingsEqual, type SettingsFormValues } from './settings-form'
 import type { BackupPending, BackupMessage } from './settings-types'
+import type { TranslateSettings, TranslateSettingsInput } from '@renderer/shared/types'
 
 type SettingsDialogProps = {
   open: boolean
@@ -34,15 +36,17 @@ type SettingsDialogProps = {
   systemInfo: SystemInfo | null
   updateStatus: AppUpdateStatus | null
   aiSettings: AiSettings | null
+  translateSettings: TranslateSettings | null
   initialSection?: SettingsSection
   onOpenChange: (open: boolean) => void
   onSubmit: (input: SettingsUpdateInput) => Promise<void>
   onVerifyAi: (input: AiSettingsInput) => Promise<AiSettings>
   onClearAi: () => Promise<AiSettings>
+  onSaveTranslate: (input: TranslateSettingsInput) => Promise<TranslateSettings>
   onImported?: () => Promise<void> | void
 }
 
-type SettingsSection = 'general' | 'ai' | 'backup' | 'about'
+type SettingsSection = 'general' | 'ai' | 'translate' | 'backup' | 'about'
 const AUTO_SAVE_DELAY_MS = 350
 
 const sections: Array<{
@@ -59,6 +63,11 @@ const sections: Array<{
     value: 'ai',
     labelKey: 'settings.ai',
     icon: Bot
+  },
+  {
+    value: 'translate',
+    labelKey: 'settings.translate',
+    icon: Languages
   },
   {
     value: 'backup',
@@ -79,11 +88,13 @@ export function SettingsDialog({
   systemInfo,
   updateStatus,
   aiSettings,
+  translateSettings,
   initialSection = 'general',
   onOpenChange,
   onSubmit,
   onVerifyAi,
   onClearAi,
+  onSaveTranslate,
   onImported
 }: SettingsDialogProps): React.JSX.Element {
   const { t } = useI18n()
@@ -448,6 +459,9 @@ export function SettingsDialog({
           </section>
           <section ref={(node) => { sectionRefs.current.ai = node ?? undefined }} aria-label={t('settings.ai')}>
             <AiSettingsForm settings={aiSettings} onVerify={onVerifyAi} onClear={onClearAi} />
+          </section>
+          <section ref={(node) => { sectionRefs.current.translate = node ?? undefined }} aria-label={t('settings.translate')}>
+            <TranslationSettings settings={translateSettings} onSave={onSaveTranslate} />
           </section>
           <section ref={(node) => { sectionRefs.current.backup = node ?? undefined }} aria-label={t('settings.backup')}>
             <BackupSettings

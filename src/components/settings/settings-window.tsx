@@ -4,7 +4,14 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { SettingsDialog } from './settings-dialog'
 import { loadAiSettings, saveSettings, verifyAndSaveAiSettings, clearAiSettings, getAppUpdateStatus, onAppUpdateStatus } from '@renderer/lib/api'
 import { useI18n, normalizeLocale } from '@renderer/lib/i18n'
-import type { AiSettings, AppSettings, AppUpdateStatus, SystemInfo } from '@renderer/shared/types'
+import type {
+  AiSettings,
+  AppSettings,
+  AppUpdateStatus,
+  SystemInfo,
+  TranslateSettings,
+  TranslateSettingsInput
+} from '@renderer/shared/types'
 
 export function SettingsWindow(): React.JSX.Element {
   const { t, setLocale } = useI18n()
@@ -12,6 +19,7 @@ export function SettingsWindow(): React.JSX.Element {
   const [aiSettings, setAiSettings] = React.useState<AiSettings | null>(null)
   const [systemInfo, setSystemInfo] = React.useState<SystemInfo | null>(null)
   const [updateStatus, setUpdateStatus] = React.useState<AppUpdateStatus | null>(null)
+  const [translateSettings, setTranslateSettings] = React.useState<TranslateSettings | null>(null)
   const [error, setError] = React.useState('')
   const [section, setSection] = React.useState<'general' | 'about'>(
     new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('section') === 'about' ? 'about' : 'general'
@@ -27,14 +35,16 @@ export function SettingsWindow(): React.JSX.Element {
       window.api.settings.get(),
       loadAiSettings().catch(() => null),
       window.api.system.info(),
-      getAppUpdateStatus().catch(() => null)
+      getAppUpdateStatus().catch(() => null),
+      window.api.translate.getSettings().catch(() => null)
     ])
-      .then(([nextSettings, nextAi, nextSystem, nextUpdate]) => {
+      .then(([nextSettings, nextAi, nextSystem, nextUpdate, nextTranslate]) => {
         if (!active) return
         setSettings(nextSettings)
         setAiSettings(nextAi)
         setSystemInfo(nextSystem)
         setUpdateStatus(nextUpdate)
+        setTranslateSettings(nextTranslate)
         setLocale(normalizeLocale(nextSettings.locale))
       })
       .catch((reason) => { if (active) setError(String(reason)) })
@@ -71,6 +81,12 @@ export function SettingsWindow(): React.JSX.Element {
             const updated = await clearAiSettings()
             setAiSettings(updated)
             return updated
+          }}
+          translateSettings={translateSettings}
+          onSaveTranslate={async (input: TranslateSettingsInput) => {
+            const saved = await window.api.translate.saveSettings(input)
+            setTranslateSettings(saved)
+            return saved
           }}
           onImported={() => emit('settings/backupImported')}
         />

@@ -13,4 +13,9 @@ export type {
   CorrespondentThreadMessage,
   CorrespondentThreadResult
 } from './types/correspondents'
-export type { OneMailApi } from './types/desktop-api'
+export type {
+  OneMailApi,
+  TranslateBackend,
+  TranslateSettings,
+  TranslateSettingsInput
+} from './types/desktop-api'

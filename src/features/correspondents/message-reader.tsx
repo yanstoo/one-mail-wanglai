@@ -1,8 +1,10 @@
 import * as React from 'react'
-import { CornerUpLeft, CornerUpRight, Forward, Mail, ShieldAlert, Trash2 } from 'lucide-react'
+import { CornerUpLeft, CornerUpRight, Forward, Languages, Mail, ShieldAlert, Trash2 } from 'lucide-react'
 
 import { formatAbsoluteTime } from '@renderer/components/mail/date-format'
+import { cn } from '@renderer/lib/utils'
 import type { CorrespondentThreadMessage, MailMessageDetail } from '@renderer/shared/types'
+import { bodyKey, useTranslation } from './use-translation'
 
 /**
  * 右栏正文（阶段 2 轻量版）：先用 messages.get + loadBody 渲染，
@@ -44,6 +46,11 @@ export function CorrespondentMessageReader({
   const bodyText = detail?.body?.bodyText ?? ''
   const bodyHtml = detail?.body?.bodyHtmlSanitized ?? ''
 
+  const translation = useTranslation()
+  const translationKey = bodyKey(message.messageId)
+  const translatedBody = translation.translationOf(translationKey)
+  const translating = translation.pendingKey === translationKey
+
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-background">
       <header className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-3 text-[12px]">
@@ -60,6 +67,19 @@ export function CorrespondentMessageReader({
           className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
         >
           <CornerUpRight className="size-3.5" aria-hidden="true" /> 回复全部
+        </button>
+        <button
+          type="button"
+          onClick={() => void translation.translate(translationKey, bodyText)}
+          disabled={!bodyText || translating}
+          title={translatedBody ? '收起译文' : '翻译正文'}
+          className={cn(
+            'flex items-center gap-1 disabled:opacity-40',
+            translatedBody ? 'font-semibold text-primary' : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Languages className={cn('size-3.5', translating && 'animate-pulse')} aria-hidden="true" />
+          {translating ? '翻译中…' : translatedBody ? '收起译文' : '翻译'}
         </button>
         <button
           type="button"
@@ -113,7 +133,14 @@ export function CorrespondentMessageReader({
         {error ? <p className="mt-4 text-[11.5px] text-destructive">{error}</p> : null}
 
         {!loading && !error ? (
-          bodyHtml ? (
+          <>
+            {translatedBody ? (
+              <div className="mt-4 mb-3 rounded-lg border border-primary/25 bg-primary/5 p-3 text-[13px] leading-relaxed whitespace-pre-wrap">
+                <p className="mb-1 text-[10.5px] font-semibold text-primary">译文</p>
+                {translatedBody}
+              </div>
+            ) : null}
+            {bodyHtml ? (
             // 后端已完成净化（body_html_sanitized），远程图片默认被阻止
             <div
               className="mt-4 text-[12.5px] leading-relaxed [&_a]:text-primary [&_img]:max-w-full"
@@ -123,7 +150,8 @@ export function CorrespondentMessageReader({
             <pre className="mt-4 whitespace-pre-wrap break-words font-sans text-[12.5px] leading-relaxed">
               {bodyText || '（正文尚未缓存，点开时按需加载）'}
             </pre>
-          )
+            )}
+          </>
         ) : null}
 
         {detail?.attachments?.length ? (

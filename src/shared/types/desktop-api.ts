@@ -76,6 +76,11 @@ export type OneMailApi = {
     importSql: (operationId?: string) => Promise<BackupImportResult>
     onBackupImportProgress: (callback: (progress: BackupImportProgress) => void) => () => void
   }
+  translate: {
+    text: (input: { text: string; backend?: TranslateBackend }) => Promise<{ text: string }>
+    getSettings: () => Promise<TranslateSettings>
+    saveSettings: (input: TranslateSettingsInput) => Promise<TranslateSettings>
+  }
   ai: {
     getSettings: () => Promise<AiSettings>
     verifyAndSave: (input: AiSettingsInput) => Promise<AiSettings>
@@ -105,4 +110,26 @@ export type OneMailApi = {
     /** 传 null 表示清除已保存的值 */
     setGoogleClientId: (clientId: string | null) => Promise<{ clientId: string | null; saved: boolean }>
   }
+}
+
+export type TranslateBackend = 'google' | 'libretranslate' | 'azure' | 'deepl'
+
+export type TranslateSettings = {
+  backend: TranslateBackend
+  /** 目标语言；空 = 简体中文 */
+  targetLang: string
+  libretranslateUrl: string | null
+  apiKeyConfigured: boolean
+  apiRegion: string | null
+  /** 当前用的是 Google 非官方端点 */
+  googleUnofficial: boolean
+}
+
+export type TranslateSettingsInput = {
+  backend?: TranslateBackend
+  targetLang?: string
+  libretranslateUrl?: string | null
+  /** 传空串表示清除 */
+  apiKey?: string | null
+  apiRegion?: string | null
 }
