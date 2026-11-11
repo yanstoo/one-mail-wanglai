@@ -104,7 +104,6 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
   const [detail, setDetail] = React.useState<MailMessageDetail | null>(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
   const [detailError, setDetailError] = React.useState<string | null>(null)
-  const [refreshing, setRefreshing] = React.useState(false)
   const [syncing, setSyncing] = React.useState(false)
 
   const [composeOpen, setComposeOpen] = React.useState(false)
@@ -189,20 +188,16 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
     void getCurrentWindow().startDragging().catch(() => null)
   }
 
-  const refresh = (): void => {
-    setRefreshing(true)
-    void queryClient
-      .invalidateQueries({ queryKey: ['correspondents'] })
-      .finally(() => setRefreshing(false))
-  }
-
   const syncAll = (): void => {
     setSyncing(true)
     void window.api.sync
       .startAll('refresh')
       .then(() => toast.success('已开始同步全部邮箱'))
       .catch((error: unknown) => toast.error(error instanceof Error ? error.message : '同步失败'))
-      .finally(() => setSyncing(false))
+      .finally(() => {
+        setSyncing(false)
+        void queryClient.invalidateQueries({ queryKey: ['correspondents'] })
+      })
   }
 
   const startCompose = React.useCallback(
@@ -375,15 +370,6 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
           >
             <RefreshCw className={cn('size-3.5', syncing && 'animate-spin')} aria-hidden="true" />
             同步
-          </button>
-          <button
-            type="button"
-            onClick={refresh}
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="刷新列表"
-            title="刷新列表"
-          >
-            <RefreshCw className={cn('size-3.5', refreshing && 'animate-spin')} aria-hidden="true" />
           </button>
           <button
             type="button"
