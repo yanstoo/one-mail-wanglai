@@ -104,6 +104,7 @@ pub fn list(
     keyword: Option<&str>,
     cursor: Option<&str>,
     limit: i64,
+    account: Option<i64>,
 ) -> Result<Value, String> {
     let junk = group == GROUP_JUNK;
     let order_column = if junk { "junk_last_at" } else { "last_at" };
@@ -131,6 +132,13 @@ pub fn list(
     );
 
     let mut bindings: Vec<Box<dyn ToSql>> = Vec::new();
+    if let Some(account_id) = account {
+        sql.push_str(
+            " AND EXISTS (SELECT 1 FROM onemail_correspondent_accounts ca
+                          WHERE ca.correspondent_id=c.correspondent_id AND ca.account_id=?)",
+        );
+        bindings.push(Box::new(account_id));
+    }
     if let Some(keyword) = keyword.map(str::trim).filter(|value| !value.is_empty()) {
         let pattern = format!("%{keyword}%");
         sql.push_str(" AND (c.address_norm LIKE ? OR c.display_name LIKE ?)");

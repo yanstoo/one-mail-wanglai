@@ -43,6 +43,7 @@ pub fn correspondents_list(
     let keyword = string_field(&query, "keyword");
     let cursor = string_field(&query, "cursor");
     let limit = limit_field(&query, 30);
+    let account = query.get("accountId").and_then(Value::as_i64);
 
     let connection = db::open(&state)?;
     correspondents::list(
@@ -51,6 +52,7 @@ pub fn correspondents_list(
         keyword.as_deref(),
         cursor.as_deref(),
         limit,
+        account,
     )
 }
 

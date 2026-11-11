@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Check, Search, AlertTriangle } from 'lucide-react'
+import { AlertTriangle, ChevronDown, Search } from 'lucide-react'
 
 import { formatRelativeTime } from '@renderer/components/mail/date-format'
 import { cn } from '@renderer/lib/utils'
@@ -37,15 +37,14 @@ function Avatar({ correspondent }: { correspondent: CorrespondentSummary }): Rea
   )
 }
 
-/** 徽标：最多 2 个，溢出用 +N，hover 展示全部。 */
+/** 徽标：最多 2 个，溢出用 +N，hover 展示全部账号。 */
 function BadgeStack({ correspondent }: { correspondent: CorrespondentSummary }): React.JSX.Element | null {
   const { accounts, badgeTotal } = correspondent
   if (accounts.length === 0) return null
   const { shown, extra } = visibleBadges(accounts, badgeTotal)
-  const tooltip = badgeTooltip(accounts)
 
   return (
-    <span className="flex items-center gap-0.5" title={tooltip}>
+    <span className="flex items-center gap-0.5" title={badgeTooltip(accounts)}>
       {shown.map((account, index) => (
         <span
           key={account.accountId}
@@ -82,26 +81,32 @@ export function CorrespondentList({
   group,
   onGroupChange,
   counts,
-  keyword,
-  onKeywordChange,
   items,
   selectedId,
   onSelect,
   loading,
   nextCursor,
-  loadMore
+  loadMore,
+  accounts,
+  accountId,
+  onAccountChange,
+  onFocusSearch,
+  searching
 }: {
   group: CorrespondentGroup
   onGroupChange: (group: CorrespondentGroup) => void
   counts: CorrespondentGroupCounts | undefined
-  keyword: string
-  onKeywordChange: (keyword: string) => void
   items: CorrespondentSummary[]
   selectedId: number | null
   onSelect: (correspondentId: number) => void
   loading: boolean
   nextCursor: string | null
   loadMore: () => void
+  accounts: { accountId: number; label: string; badge: string }[]
+  accountId: number | null
+  onAccountChange: (accountId: number | null) => void
+  onFocusSearch: () => void
+  searching: boolean
 }): React.JSX.Element {
   return (
     <aside className="native-sidebar flex min-h-0 w-[264px] shrink-0 flex-col border-r border-black/5 text-xs dark:border-white/8">
@@ -112,7 +117,15 @@ export function CorrespondentList({
             {counts ? counts[group].contacts : '—'}
           </span>
         </div>
-        <Search className="size-3.5 text-muted-foreground" aria-hidden="true" />
+        <button
+          type="button"
+          onClick={onFocusSearch}
+          className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+          aria-label="搜索联系人"
+          title="搜索联系人"
+        >
+          <Search className="size-3.5" aria-hidden="true" />
+        </button>
       </div>
 
       <div className="mx-3 mb-2 flex shrink-0 rounded-lg bg-black/5 p-0.5 dark:bg-white/10">
@@ -143,13 +156,25 @@ export function CorrespondentList({
       </div>
 
       <div className="mx-3 mb-2 shrink-0">
-        <div className="flex items-center gap-1.5 rounded-lg border border-black/10 bg-background px-2 py-1.5 dark:border-white/15">
-          <Search className="size-3 text-muted-foreground" aria-hidden="true" />
-          <input
-            value={keyword}
-            onChange={(event) => onKeywordChange(event.target.value)}
-            placeholder="搜索地址或名称"
-            className="w-full bg-transparent text-[11.5px] outline-none placeholder:text-muted-foreground"
+        <div className="relative">
+          <select
+            value={accountId ?? ''}
+            onChange={(event) =>
+              onAccountChange(event.target.value === '' ? null : Number(event.target.value))
+            }
+            className="w-full appearance-none rounded-lg border border-black/10 bg-background px-2 py-1.5 pr-6 text-[11.5px] outline-none dark:border-white/15"
+            aria-label="按邮箱筛选"
+          >
+            <option value="">全部邮箱</option>
+            {accounts.map((account) => (
+              <option key={account.accountId} value={account.accountId}>
+                {account.badge} · {account.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            className="pointer-events-none absolute right-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
           />
         </div>
       </div>
@@ -160,7 +185,7 @@ export function CorrespondentList({
         ) : null}
         {!loading && items.length === 0 ? (
           <p className="px-2 py-6 text-center text-[11px] text-muted-foreground">
-            {keyword.trim() ? '没有匹配的联系人' : '还没有往来记录'}
+            {searching ? '没有匹配的联系人' : '还没有往来记录'}
           </p>
         ) : null}
 
@@ -211,14 +236,9 @@ export function CorrespondentList({
             onClick={loadMore}
             className="mt-1 flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] text-muted-foreground hover:bg-white/60 dark:hover:bg-white/10"
           >
-            <Check className="size-3" aria-hidden="true" /> 载入更多
+            <AlertTriangle className="size-3" aria-hidden="true" /> 载入更多
           </button>
         ) : null}
-      </div>
-
-      <div className="flex shrink-0 items-center gap-1 border-t border-black/5 px-3 py-1.5 text-[10.5px] text-muted-foreground dark:border-white/8">
-        <AlertTriangle className="size-3" aria-hidden="true" />
-        垃圾组只是视图：中栏内容与普通组一致
       </div>
     </aside>
   )

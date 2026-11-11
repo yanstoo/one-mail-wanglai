@@ -101,7 +101,7 @@ fn cc_recipients_create_correspondence_and_self_is_excluded() {
     add_address(&connection, message_id, "cc", "bob@corp.test", "Bob");
 
     rebuild_all(&connection).expect("rebuild index");
-    let items = list(&connection, GROUP_NORMAL, None, None, 50).expect("list normal");
+    let items = list(&connection, GROUP_NORMAL, None, None, 50, None).expect("list normal");
 
     let alice = find(&items, "alice@corp.test");
     assert_eq!(alice["displayName"], "Alice");
@@ -126,7 +126,7 @@ fn outbound_only_contact_is_indexed_from_outbox() {
     insert_sent_outbox(&connection, 1, r#"[{"name":"Carol","email":"carol@shop.test"}]"#);
 
     rebuild_all(&connection).expect("rebuild index");
-    let items = list(&connection, GROUP_NORMAL, None, None, 50).expect("list normal");
+    let items = list(&connection, GROUP_NORMAL, None, None, 50, None).expect("list normal");
     let carol = find(&items, "carol@shop.test");
     assert_eq!(carol["outboundCount"], 1);
     assert_eq!(carol["inboundCount"], 0);
@@ -147,14 +147,14 @@ fn junk_is_counted_separately_and_never_drives_normal_order() {
 
     rebuild_all(&connection).expect("rebuild index");
 
-    let normal_items = list(&connection, GROUP_NORMAL, None, None, 50).expect("list normal");
+    let normal_items = list(&connection, GROUP_NORMAL, None, None, 50, None).expect("list normal");
     let bob = find(&normal_items, "bob@corp.test");
     assert_eq!(bob["lastAt"], "2026-11-01T09:00:00.000Z", "垃圾邮件不得顶到普通组最前");
     assert_eq!(bob["junkLastAt"], "2026-11-09T09:00:00.000Z");
     assert_eq!(bob["unreadCount"], 0);
     assert_eq!(bob["junkUnreadCount"], 1);
 
-    let junk_items = list(&connection, GROUP_JUNK, None, None, 50).expect("list junk");
+    let junk_items = list(&connection, GROUP_JUNK, None, None, 50, None).expect("list junk");
     let bob_junk = find(&junk_items, "bob@corp.test");
     assert_eq!(bob_junk["junkUnreadCount"], 1);
 
@@ -175,7 +175,7 @@ fn badges_roll_up_per_account_and_overflow_can_be_rendered() {
     add_address(&connection, second, "to", "me@b.test", "我");
 
     rebuild_all(&connection).expect("rebuild index");
-    let items = list(&connection, GROUP_NORMAL, None, None, 50).expect("list normal");
+    let items = list(&connection, GROUP_NORMAL, None, None, 50, None).expect("list normal");
     let dave = find(&items, "dave@corp.test");
     assert_eq!(dave["badgeTotal"], 2);
     let accounts = dave["accounts"].as_array().expect("accounts array");
@@ -196,7 +196,7 @@ fn read_state_change_updates_unread_counts() {
     add_address(&connection, message_id, "to", "me@a.test", "我");
     rebuild_all(&connection).expect("rebuild index");
 
-    let before = find(&list(&connection, GROUP_NORMAL, None, None, 50).unwrap(), "erin@corp.test");
+    let before = find(&list(&connection, GROUP_NORMAL, None, None, 50, None).unwrap(), "erin@corp.test");
     assert_eq!(before["unreadCount"], 1);
 
     connection
@@ -207,7 +207,7 @@ fn read_state_change_updates_unread_counts() {
         .expect("mark read");
     on_read_state_changed(&connection, message_id).expect("refresh after read");
 
-    let after = find(&list(&connection, GROUP_NORMAL, None, None, 50).unwrap(), "erin@corp.test");
+    let after = find(&list(&connection, GROUP_NORMAL, None, None, 50, None).unwrap(), "erin@corp.test");
     assert_eq!(after["unreadCount"], 0);
 }
 
@@ -225,7 +225,7 @@ fn thread_returns_full_history_including_junk() {
     add_address(&connection, reply, "to", "frank@corp.test", "Frank");
 
     rebuild_all(&connection).expect("rebuild index");
-    let frank = find(&list(&connection, GROUP_NORMAL, None, None, 50).unwrap(), "frank@corp.test");
+    let frank = find(&list(&connection, GROUP_NORMAL, None, None, 50, None).unwrap(), "frank@corp.test");
     let correspondent_id = frank["correspondentId"].as_i64().expect("id");
 
     let thread = thread(&connection, correspondent_id, None, 50).expect("thread");
@@ -245,7 +245,7 @@ fn trash_and_drafts_do_not_create_correspondence() {
     add_address(&connection, trashed, "to", "me@a.test", "我");
 
     rebuild_all(&connection).expect("rebuild index");
-    let items = list(&connection, GROUP_NORMAL, None, None, 50).expect("list normal");
+    let items = list(&connection, GROUP_NORMAL, None, None, 50, None).expect("list normal");
     assert!(items["items"].as_array().unwrap().is_empty(), "回收站邮件不参与往来");
 }
 
@@ -259,7 +259,7 @@ fn junk_override_moves_a_message_between_groups() {
 
     // 收件箱邮件默认属普通组
     assert!(
-        list(&connection, GROUP_JUNK, None, None, 50).unwrap()["items"]
+        list(&connection, GROUP_JUNK, None, None, 50, None).unwrap()["items"]
             .as_array()
             .unwrap()
             .is_empty(),
@@ -274,12 +274,12 @@ fn junk_override_moves_a_message_between_groups() {
         )
         .expect("mark junk");
     rebuild_all(&connection).expect("rebuild index");
-    let junk = list(&connection, GROUP_JUNK, None, None, 50).unwrap();
+    let junk = list(&connection, GROUP_JUNK, None, None, 50, None).unwrap();
     let hank = find(&junk, "hank@corp.test");
     assert_eq!(hank["junkUnreadCount"], 0, "该邮件已读，垃圾未读应为 0");
     assert!(hank["junkLastAt"].as_str().is_some());
     assert!(
-        list(&connection, GROUP_NORMAL, None, None, 50).unwrap()["items"]
+        list(&connection, GROUP_NORMAL, None, None, 50, None).unwrap()["items"]
             .as_array()
             .unwrap()
             .is_empty(),
@@ -294,11 +294,11 @@ fn junk_override_moves_a_message_between_groups() {
         )
         .expect("unmark junk");
     rebuild_all(&connection).expect("rebuild index");
-    assert!(list(&connection, GROUP_JUNK, None, None, 50).unwrap()["items"]
+    assert!(list(&connection, GROUP_JUNK, None, None, 50, None).unwrap()["items"]
         .as_array()
         .unwrap()
         .is_empty());
-    let normal = list(&connection, GROUP_NORMAL, None, None, 50).unwrap();
+    let normal = list(&connection, GROUP_NORMAL, None, None, 50, None).unwrap();
     assert_eq!(find(&normal, "hank@corp.test")["inboundCount"], 1);
 }
 
@@ -310,7 +310,7 @@ fn user_deleted_messages_leave_the_index() {
     add_address(&connection, message_id, "to", "me@a.test", "我");
     rebuild_all(&connection).expect("rebuild index");
     assert_eq!(
-        find(&list(&connection, GROUP_NORMAL, None, None, 50).unwrap(), "iris@corp.test")
+        find(&list(&connection, GROUP_NORMAL, None, None, 50, None).unwrap(), "iris@corp.test")
             ["inboundCount"],
         1
     );
@@ -323,7 +323,7 @@ fn user_deleted_messages_leave_the_index() {
         .expect("mark deleted");
     rebuild_all(&connection).expect("rebuild index");
     assert!(
-        list(&connection, GROUP_NORMAL, None, None, 50).unwrap()["items"]
+        list(&connection, GROUP_NORMAL, None, None, 50, None).unwrap()["items"]
             .as_array()
             .unwrap()
             .is_empty(),

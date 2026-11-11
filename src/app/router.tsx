@@ -13,11 +13,16 @@ export const appRouter = createHashRouter([
     children: [
       {
         path: '/',
+        element: <CorrespondentsPage />
+      },
+      {
+        // 旧版收件箱保留为「经典收件箱」，不再作为默认入口
+        path: '/mailbox',
         element: <MailboxPage />
       },
       {
         path: '/correspondents',
-        element: <CorrespondentsPage />
+        element: <Navigate to="/" replace />
       },
       {
         path: '/accounts/new',

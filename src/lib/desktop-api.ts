@@ -135,7 +135,8 @@ export function createDesktopApi(): OneMailApi {
       reloadClient: () => command('system_reload_client'),
       openDevtools: () => command('system_open_devtools'),
       revealPath: (path) => command('system_reveal_path', { path }),
-      openExternal: (url) => command('system_open_external', { url })
+      openExternal: (url) => command('system_open_external', { url }),
+      openSettings: (section) => command('settings_open_window', { section: section ?? 'general' })
     }
   }
 }

@@ -45,6 +45,8 @@ export type CorrespondentListQuery = {
   keyword?: string
   cursor?: string
   limit?: number
+  /** 只看某个「我的邮箱」下的往来；不传=全部邮箱 */
+  accountId?: number
 }
 
 export type CorrespondentListResult = {

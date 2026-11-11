@@ -97,5 +97,6 @@ export type OneMailApi = {
     openDevtools: () => Promise<boolean>
     revealPath: (path: string) => Promise<boolean>
     openExternal: (url: string) => Promise<boolean>
+    openSettings: (section?: string) => Promise<boolean>
   }
 }

@@ -4,7 +4,6 @@ import * as React from 'react'
 import { gsap } from 'gsap'
 import { toast } from 'sonner'
 import { listen } from '@tauri-apps/api/event'
-import { useNavigate } from 'react-router'
 import {
   ChevronDown,
   CloudDownload,
@@ -17,7 +16,6 @@ import {
   ScrollText,
   Settings,
   Upload,
-  Users,
   X
 } from 'lucide-react'
 
@@ -155,26 +153,11 @@ export function TitleBar({
     >
       <TooltipProvider>
         <div className="app-no-drag flex items-center gap-1">
-          <CorrespondentsButton label="往来联系人" />
           <SettingsButton label={t('common.settings')} onClick={onOpenSettings} />
           <ThemeToggleButton />
         </div>
       </TooltipProvider>
     </header>
-  )
-}
-
-function CorrespondentsButton({ label }: { label: string }): React.JSX.Element {
-  const navigate = useNavigate()
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="outline" size="icon-sm" aria-label={label} onClick={() => navigate('/correspondents')}>
-          <Users aria-hidden="true" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{label}</TooltipContent>
-    </Tooltip>
   )
 }
 

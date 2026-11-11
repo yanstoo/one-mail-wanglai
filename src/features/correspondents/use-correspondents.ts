@@ -24,7 +24,11 @@ export function useCorrespondentGroupCounts(): {
 }
 
 /** 左栏联系人列表（按分组 + 关键词），支持游标翻页。 */
-export function useCorrespondentList(group: CorrespondentGroup, keyword: string): {
+export function useCorrespondentList(
+  group: CorrespondentGroup,
+  keyword: string,
+  accountId: number | null
+): {
   items: CorrespondentListResult['items']
   nextCursor: string | null
   loading: boolean
@@ -39,8 +43,14 @@ export function useCorrespondentList(group: CorrespondentGroup, keyword: string)
   const [error, setError] = React.useState<string | null>(null)
 
   const query = useQuery({
-    queryKey: ['correspondents', 'list', group, trimmed],
-    queryFn: () => window.api.correspondents.list({ group, keyword: trimmed, limit: PAGE_SIZE }),
+    queryKey: ['correspondents', 'list', group, trimmed, accountId],
+    queryFn: () =>
+      window.api.correspondents.list({
+        group,
+        keyword: trimmed,
+        limit: PAGE_SIZE,
+        accountId: accountId ?? undefined
+      }),
     staleTime: 10_000
   })
 
@@ -55,11 +65,11 @@ export function useCorrespondentList(group: CorrespondentGroup, keyword: string)
     if (!cursor || loadingMore) return
     setLoadingMore(true)
     window.api.correspondents
-      .list({ group, keyword: trimmed, cursor, limit: PAGE_SIZE })
+      .list({ group, keyword: trimmed, cursor, limit: PAGE_SIZE, accountId: accountId ?? undefined })
       .then((page) => setPages((current) => [...current, page]))
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => setLoadingMore(false))
-  }, [group, loadingMore, pages, trimmed])
+  }, [accountId, group, loadingMore, pages, trimmed])
 
   const items = React.useMemo(() => pages.flatMap((page) => page.items), [pages])
   const nextCursor = pages[pages.length - 1]?.nextCursor ?? null
