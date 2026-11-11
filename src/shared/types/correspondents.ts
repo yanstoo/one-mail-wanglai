@@ -20,6 +20,8 @@ export type CorrespondentSummary = {
   address: string
   addressDisplay: string
   displayName: string | null
+  /** 本地备注名，优先于 displayName 展示 */
+  alias: string | null
   lastAt: string | null
   junkLastAt: string | null
   /** 普通未读（普通组红角标） */

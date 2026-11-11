@@ -115,7 +115,7 @@ pub fn list(
     };
 
     let mut sql = format!(
-        "SELECT c.correspondent_id, c.address_norm, c.address_display, c.display_name,
+        "SELECT c.correspondent_id, c.address_norm, c.address_display, c.display_name, c.alias,
                 c.last_at, c.junk_last_at, c.unread_count, c.junk_unread_count,
                 c.inbound_count, c.outbound_count,
                 (SELECT cm.subject FROM onemail_correspondent_messages cm
@@ -141,7 +141,8 @@ pub fn list(
     }
     if let Some(keyword) = keyword.map(str::trim).filter(|value| !value.is_empty()) {
         let pattern = format!("%{keyword}%");
-        sql.push_str(" AND (c.address_norm LIKE ? OR c.display_name LIKE ?)");
+        sql.push_str(" AND (c.address_norm LIKE ? OR c.display_name LIKE ? OR c.alias LIKE ?)");
+        bindings.push(Box::new(pattern.clone()));
         bindings.push(Box::new(pattern.clone()));
         bindings.push(Box::new(pattern));
     }
@@ -168,15 +169,16 @@ pub fn list(
                 address_norm: row.get(1)?,
                 address_display: row.get(2)?,
                 display_name: row.get(3)?,
-                last_at: row.get(4)?,
-                junk_last_at: row.get(5)?,
-                unread_count: row.get(6)?,
-                junk_unread_count: row.get(7)?,
-                inbound_count: row.get(8)?,
-                outbound_count: row.get(9)?,
-                last_subject: row.get(10)?,
-                last_is_junk: row.get::<_, Option<i64>>(11)?.unwrap_or(0) != 0,
-                last_has_attachment: row.get::<_, Option<i64>>(12)?.unwrap_or(0) != 0,
+                alias: row.get(4)?,
+                last_at: row.get(5)?,
+                junk_last_at: row.get(6)?,
+                unread_count: row.get(7)?,
+                junk_unread_count: row.get(8)?,
+                inbound_count: row.get(9)?,
+                outbound_count: row.get(10)?,
+                last_subject: row.get(11)?,
+                last_is_junk: row.get::<_, Option<i64>>(12)?.unwrap_or(0) != 0,
+                last_has_attachment: row.get::<_, Option<i64>>(13)?.unwrap_or(0) != 0,
             })
         })
         .map_err(|error| format!("读取联系人列表失败：{error}"))?
@@ -242,7 +244,7 @@ pub fn thread(
 ) -> Result<Value, String> {
     let meta = connection
         .query_row(
-            "SELECT correspondent_id, address_norm, address_display, display_name,
+            "SELECT correspondent_id, address_norm, address_display, display_name, alias,
                     last_at, junk_last_at, unread_count, junk_unread_count,
                     inbound_count, outbound_count
              FROM onemail_correspondents WHERE correspondent_id=?1",
@@ -253,12 +255,13 @@ pub fn thread(
                     address_norm: row.get(1)?,
                     address_display: row.get(2)?,
                     display_name: row.get(3)?,
-                    last_at: row.get(4)?,
-                    junk_last_at: row.get(5)?,
-                    unread_count: row.get(6)?,
-                    junk_unread_count: row.get(7)?,
-                    inbound_count: row.get(8)?,
-                    outbound_count: row.get(9)?,
+                    alias: row.get(4)?,
+                    last_at: row.get(5)?,
+                    junk_last_at: row.get(6)?,
+                    unread_count: row.get(7)?,
+                    junk_unread_count: row.get(8)?,
+                    inbound_count: row.get(9)?,
+                    outbound_count: row.get(10)?,
                     last_subject: None,
                     last_is_junk: false,
                     last_has_attachment: false,
@@ -371,6 +374,7 @@ struct CorrespondentRow {
     address_norm: String,
     address_display: String,
     display_name: Option<String>,
+    alias: Option<String>,
     last_at: Option<String>,
     junk_last_at: Option<String>,
     unread_count: i64,
@@ -389,6 +393,7 @@ impl CorrespondentRow {
             "address": self.address_norm,
             "addressDisplay": self.address_display,
             "displayName": self.display_name,
+            "alias": self.alias,
             "lastAt": self.last_at,
             "junkLastAt": self.junk_last_at,
             "unreadCount": self.unread_count,
@@ -408,6 +413,25 @@ struct BadgeRow {
     last_at: String,
     unread_count: i64,
     junk_unread_count: i64,
+}
+
+/// 设置/清除联系人备注名（本地生效，不写回邮件服务器）。
+pub fn set_alias(connection: &Connection, correspondent_id: i64, alias: Option<&str>) -> Result<(), String> {
+    let normalized = alias
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(64).collect::<String>());
+    let changed = connection
+        .execute(
+            "UPDATE onemail_correspondents SET alias=?2,
+               updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE correspondent_id=?1",
+            rusqlite::params![correspondent_id, normalized],
+        )
+        .map_err(|error| format!("保存备注名失败：{error}"))?;
+    if changed == 0 {
+        return Err("联系人不存在。".to_string());
+    }
+    Ok(())
 }
 
 type AccountMeta = (String, String, String, Option<String>);

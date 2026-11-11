@@ -18,7 +18,12 @@ import { WindowControls } from '@renderer/components/window-controls'
 import { createComposeDraft, loadAccounts, saveComposedDraft, sendComposedMessage } from '@renderer/lib/api'
 import type { ComposeDraft, ComposeKind, SendMessageInput } from '@renderer/lib/api/types'
 import { cn } from '@renderer/lib/utils'
-import type { CorrespondentGroup, CorrespondentThreadMessage, MailMessageDetail } from '@renderer/shared/types'
+import type {
+  CorrespondentGroup,
+  CorrespondentSummary,
+  CorrespondentThreadMessage,
+  MailMessageDetail
+} from '@renderer/shared/types'
 
 import { CorrespondentList } from './correspondent-list'
 import { CorrespondentThread } from './correspondent-thread'
@@ -93,7 +98,6 @@ function TopMenu({
 
 export function CorrespondentsWorkspace(): React.JSX.Element {
   const queryClient = useQueryClient()
-  const searchRef = React.useRef<HTMLInputElement | null>(null)
 
   const [group, setGroup] = React.useState<CorrespondentGroup>('normal')
   const [keyword, setKeyword] = React.useState('')
@@ -105,6 +109,10 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
   const [detailLoading, setDetailLoading] = React.useState(false)
   const [detailError, setDetailError] = React.useState<string | null>(null)
   const [syncing, setSyncing] = React.useState(false)
+
+  const [renameTarget, setRenameTarget] = React.useState<CorrespondentSummary | null>(null)
+  const [renameValue, setRenameValue] = React.useState('')
+  const [renameSaving, setRenameSaving] = React.useState(false)
 
   const [composeOpen, setComposeOpen] = React.useState(false)
   const [composeDraft, setComposeDraft] = React.useState<ComposeDraft | null>(null)
@@ -320,6 +328,32 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
     }
   }, [queryClient, selectedMessage])
 
+  const startRename = (correspondent: CorrespondentSummary): void => {
+    setRenameTarget(correspondent)
+    setRenameValue(correspondent.alias ?? '')
+  }
+
+  const clearAlias = (correspondent: CorrespondentSummary): void => {
+    void window.api.correspondents
+      .setAlias(correspondent.correspondentId, null)
+      .then(() => queryClient.invalidateQueries({ queryKey: ['correspondents'] }))
+      .catch((error: unknown) => toast.error(error instanceof Error ? error.message : '清除备注名失败'))
+  }
+
+  const saveAlias = (): void => {
+    if (!renameTarget) return
+    setRenameSaving(true)
+    void window.api.correspondents
+      .setAlias(renameTarget.correspondentId, renameValue.trim() || null)
+      .then(() => {
+        toast.success('备注名已保存')
+        setRenameTarget(null)
+        return queryClient.invalidateQueries({ queryKey: ['correspondents'] })
+      })
+      .catch((error: unknown) => toast.error(error instanceof Error ? error.message : '保存备注名失败'))
+      .finally(() => setRenameSaving(false))
+  }
+
   const replyTarget = selectedMessage ?? thread?.messages[0] ?? null
 
   const accountOptions = React.useMemo(
@@ -348,7 +382,6 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
             aria-hidden="true"
           />
           <input
-            ref={searchRef}
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
             placeholder="搜索联系人、邮箱地址或邮件主题"
@@ -445,7 +478,8 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
               setAccountId(next)
               setSelectedId(null)
             }}
-            onFocusSearch={() => searchRef.current?.focus()}
+            onRename={startRename}
+            onClearAlias={clearAlias}
             searching={keyword.trim().length > 0}
           />
 
@@ -454,6 +488,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
             loading={threadLoading}
             selectedKey={selectedMessage ? messageKey(selectedMessage) : null}
             onSelectMessage={setSelectedMessage}
+            onReplyTo={(message) => void startCompose('reply', message)}
             onReply={() => void startCompose(replyTarget ? 'reply' : 'new', replyTarget)}
           />
 
@@ -491,6 +526,43 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
           )}
         </div>
       )}
+
+      {renameTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="w-[320px] rounded-xl border border-border bg-background p-4 shadow-xl">
+            <p className="text-[13px] font-semibold">设置备注名</p>
+            <p className="mt-1 truncate text-[11px] text-muted-foreground">{renameTarget.address}</p>
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') saveAlias()
+                if (event.key === 'Escape') setRenameTarget(null)
+              }}
+              placeholder="例如：王经理（留空则恢复原名）"
+              className="mt-3 w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[12px] outline-none focus:border-primary/60"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRenameTarget(null)}
+                className="rounded-md border border-border px-2.5 py-1 text-[11.5px] hover:bg-muted"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={renameSaving}
+                onClick={saveAlias}
+                className="rounded-md bg-primary px-2.5 py-1 text-[11.5px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <footer className="flex h-7 shrink-0 items-center gap-3 border-t border-border bg-[var(--native-statusbar)] px-3 text-[10.5px] text-muted-foreground">
         <span>{counts ? `${counts.normal.contacts} 位联系人` : '—'}</span>

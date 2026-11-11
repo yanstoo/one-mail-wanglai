@@ -146,6 +146,7 @@ pub fn run() {
             data::correspondents::correspondents_list,
             data::correspondents::correspondents_thread,
             data::correspondents::correspondents_group_counts,
+            data::correspondents::correspondents_set_alias,
             data::messages::messages_stats,
             data::messages::messages_get,
             data::messages::messages_load_body,

@@ -357,6 +357,7 @@ CREATE TABLE IF NOT EXISTS onemail_correspondents (
   address_norm TEXT NOT NULL UNIQUE,
   address_display TEXT NOT NULL,
   display_name TEXT,
+  alias TEXT,
   domain TEXT,
   first_at TEXT,
   last_at TEXT,

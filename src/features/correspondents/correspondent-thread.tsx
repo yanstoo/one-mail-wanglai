@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Paperclip, Plus, Reply } from 'lucide-react'
 
+import { ContextMenu, useContextMenu } from '@renderer/components/context-menu'
 import { formatRelativeTime } from '@renderer/components/mail/date-format'
 import { cn } from '@renderer/lib/utils'
 import type {
@@ -28,7 +29,9 @@ function Header({
         {(profile.displayName?.trim() || profile.address).slice(0, 1).toUpperCase()}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-semibold">{profile.displayName?.trim() || profile.address}</p>
+        <p className="truncate text-[13px] font-semibold">
+          {profile.alias?.trim() || profile.displayName?.trim() || profile.address}
+        </p>
         <p className="truncate text-[10.5px] text-muted-foreground">
           {profile.address} · 往来 {profile.inboundCount + profile.outboundCount} 封
         </p>
@@ -68,12 +71,15 @@ function Header({
 function Bubble({
   message,
   selected,
-  onSelect
+  onSelect,
+  onReply
 }: {
   message: CorrespondentThreadMessage
   selected: boolean
   onSelect: () => void
+  onReply: () => void
 }): React.JSX.Element {
+  const { menu, open, close } = useContextMenu()
   const mine = message.direction === 'out'
   const subject = message.subject?.trim() || '(无主题)'
   // 只有收到的邮件才有未读概念；发件箱记录一律按已读展示
@@ -83,6 +89,7 @@ function Bubble({
       <button
         type="button"
         onClick={onSelect}
+        onContextMenu={(event) => open(event, [{ label: '回复', onSelect: onReply }])}
         className={cn(
           'flex max-w-[86%] items-center gap-1.5 rounded-[11px] px-3 py-1.5 text-left text-[12px] leading-snug',
           mine
@@ -117,6 +124,7 @@ function Bubble({
         {message.isJunk ? ' · 垃圾邮件' : ''}
         {unread ? ' · 未读' : ''}
       </span>
+      <ContextMenu menu={menu} onClose={close} />
     </div>
   )
 }
@@ -126,12 +134,15 @@ export function CorrespondentThread({
   loading,
   selectedKey,
   onSelectMessage,
+  onReplyTo,
   onReply
 }: {
   thread: CorrespondentThreadResult | undefined
   loading: boolean
   selectedKey: string | null
   onSelectMessage: (message: CorrespondentThreadMessage) => void
+  /** 右键某一封气泡时的「回复」：以该封为引用对象 */
+  onReplyTo: (message: CorrespondentThreadMessage) => void
   onReply: () => void
 }): React.JSX.Element {
   const grouped = React.useMemo(() => groupThreadByDay(thread?.messages ?? []), [thread])
@@ -164,6 +175,7 @@ export function CorrespondentThread({
                 message={message}
                 selected={selectedKey === threadMessageKey(message)}
                 onSelect={() => onSelectMessage(message)}
+                onReply={() => onReplyTo(message)}
               />
             ))}
           </React.Fragment>

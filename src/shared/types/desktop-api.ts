@@ -16,6 +16,8 @@ export type OneMailApi = {
     list: (query: CorrespondentListQuery) => Promise<CorrespondentListResult>
     thread: (correspondentId: number, before?: string | null, limit?: number) => Promise<CorrespondentThreadResult>
     groupCounts: () => Promise<CorrespondentGroupCounts>
+    /** 设置联系人备注名；传 null 清除 */
+    setAlias: (correspondentId: number, alias: string | null) => Promise<{ correspondentId: number; alias: string | null }>
   }
   accounts: {
     list: () => Promise<MailAccount[]>

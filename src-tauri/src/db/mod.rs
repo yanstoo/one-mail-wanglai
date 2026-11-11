@@ -122,6 +122,8 @@ fn ensure_compatibility(connection: &Connection) -> Result<(), String> {
         "INTEGER CHECK (junk_override IN (0, 1))",
     )?;
     add_column_if_missing(connection, "onemail_mail_accounts", "badge_label", "TEXT")?;
+    // 联系人备注名（右键设置）
+    add_column_if_missing(connection, "onemail_correspondents", "alias", "TEXT")?;
     add_column_if_missing(connection, "onemail_mail_accounts", "badge_color", "TEXT")?;
 
     add_column_if_missing(

@@ -1,5 +1,7 @@
 import * as React from 'react'
-import { AlertTriangle, ChevronDown, Search } from 'lucide-react'
+import { AlertTriangle, ChevronDown } from 'lucide-react'
+
+import { ContextMenu, useContextMenu } from '@renderer/components/context-menu'
 
 import { formatRelativeTime } from '@renderer/components/mail/date-format'
 import { cn } from '@renderer/lib/utils'
@@ -90,7 +92,8 @@ export function CorrespondentList({
   accounts,
   accountId,
   onAccountChange,
-  onFocusSearch,
+  onRename,
+  onClearAlias,
   searching
 }: {
   group: CorrespondentGroup
@@ -105,9 +108,11 @@ export function CorrespondentList({
   accounts: { accountId: number; label: string; badge: string }[]
   accountId: number | null
   onAccountChange: (accountId: number | null) => void
-  onFocusSearch: () => void
+  onRename: (correspondent: CorrespondentSummary) => void
+  onClearAlias: (correspondent: CorrespondentSummary) => void
   searching: boolean
 }): React.JSX.Element {
+  const { menu, open, close } = useContextMenu()
   return (
     <aside className="native-sidebar flex min-h-0 w-[264px] shrink-0 flex-col border-r border-black/5 text-xs dark:border-white/8">
       <div className="flex h-10 shrink-0 items-center justify-between px-3">
@@ -117,15 +122,6 @@ export function CorrespondentList({
             {counts ? counts[group].contacts : '—'}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={onFocusSearch}
-          className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-          aria-label="搜索联系人"
-          title="搜索联系人"
-        >
-          <Search className="size-3.5" aria-hidden="true" />
-        </button>
       </div>
 
       <div className="mx-3 mb-2 flex shrink-0 rounded-lg bg-black/5 p-0.5 dark:bg-white/10">
@@ -198,6 +194,19 @@ export function CorrespondentList({
               key={correspondent.correspondentId}
               type="button"
               onClick={() => onSelect(correspondent.correspondentId)}
+              onContextMenu={(event) =>
+                open(event, [
+                  {
+                    label: correspondent.alias ? '修改备注名…' : '设置备注名…',
+                    onSelect: () => onRename(correspondent)
+                  },
+                  {
+                    label: '清除备注名',
+                    disabled: !correspondent.alias,
+                    onSelect: () => onClearAlias(correspondent)
+                  }
+                ])
+              }
               className={cn(
                 'relative mb-0.5 flex w-full items-start gap-2 rounded-lg px-1.5 py-1.5 text-left',
                 selected ? 'bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/10' : 'hover:bg-white/60 dark:hover:bg-white/10'
@@ -210,7 +219,7 @@ export function CorrespondentList({
               <span className="min-w-0 flex-1">
                 <span className="flex items-center justify-between gap-1">
                   <span className="truncate text-[12.5px] font-semibold">
-                    {correspondent.displayName?.trim() || correspondent.address}
+                    {correspondent.alias?.trim() || correspondent.displayName?.trim() || correspondent.address}
                   </span>
                   <span className="flex shrink-0 items-center gap-1">
                     <UnreadPill count={unread} tone={group === 'junk' ? 'junk' : 'normal'} />
@@ -240,6 +249,7 @@ export function CorrespondentList({
           </button>
         ) : null}
       </div>
+      <ContextMenu menu={menu} onClose={close} />
     </aside>
   )
 }

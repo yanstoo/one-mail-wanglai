@@ -401,6 +401,13 @@ fn create_related_draft(state: &AppState, input: &Value, forward: bool) -> Resul
         }
         (!references.is_empty()).then_some(references)
     };
+    // 回复/回复全部：正文预置原文引用（发件箱里的「转发」暂不引用）
+    let quoted_body = if forward {
+        String::new()
+    } else {
+        build_quote(&connection, message_id, detail_object)?
+    };
+
     Ok(json!({
         "accountId": account_id,
         "mode": mode,
@@ -411,9 +418,63 @@ fn create_related_draft(state: &AppState, input: &Value, forward: bool) -> Resul
         "subject": next_subject,
         "inReplyTo": in_reply_to,
         "referencesHeader": references,
-        "bodyText": "",
+        "bodyText": quoted_body,
         "bodyHtml": null
     }))
+}
+
+/// 构造回复引用正文：
+/// `--- 发件人 <邮箱> · 时间 ---` + 每行加 `> ` 前缀。
+/// 正文尚未解析时先用 HTML 版本降级，都没有则只留引用头。
+fn build_quote(
+    connection: &rusqlite::Connection,
+    message_id: i64,
+    detail: &serde_json::Map<String, serde_json::Value>,
+) -> Result<String, String> {
+    let from_name = optional_string(detail, "fromName").unwrap_or_default();
+    let from_email = optional_string(detail, "fromEmail").unwrap_or_default();
+    let sent_at = optional_string(detail, "sentAt").unwrap_or_default();
+
+    let body_text: Option<String> = connection
+        .query_row(
+            "SELECT COALESCE(NULLIF(b.body_text,''), b.body_html_sanitized)
+             FROM onemail_mail_messages m
+             LEFT JOIN onemail_message_bodies b ON b.message_id=m.message_id
+             WHERE m.message_id=?1",
+            [message_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(database_error)?
+        .flatten();
+
+    let sender = if from_name.trim().is_empty() {
+        from_email.clone()
+    } else {
+        format!("{from_name} <{from_email}>")
+    };
+    let when = chrono::DateTime::parse_from_rfc3339(&sent_at)
+        .map(|value| value.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|_| sent_at.clone());
+
+    let mut quote = format!("\n\n--- {sender}");
+    if !when.is_empty() {
+        quote.push_str(&format!(" · {when}"));
+    }
+    quote.push_str(" ---\n");
+    match body_text {
+        Some(text) if !text.trim().is_empty() => {
+            for line in text.trim_end().lines() {
+                if line.is_empty() {
+                    quote.push_str(">\n");
+                } else {
+                    quote.push_str(&format!("> {line}\n"));
+                }
+            }
+        }
+        _ => quote.push_str("> （原邮件正文未在本地缓存，可在阅读面板重新加载后再回复）\n"),
+    }
+    Ok(quote)
 }
 
 fn format_subject(prefix: &str, subject: &str) -> String {

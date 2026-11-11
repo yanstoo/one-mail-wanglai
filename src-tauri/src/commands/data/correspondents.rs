@@ -91,3 +91,22 @@ pub(crate) fn reindex_account(state: &AppState, account_id: i64) {
         Err(error) => eprintln!("OneMail correspondent reindex open failed: {error}"),
     }
 }
+
+/// 设置联系人备注名；传空串或 null 表示清除。
+#[tauri::command]
+pub fn correspondents_set_alias(
+    state: State<'_, AppState>,
+    correspondent_id: i64,
+    alias: Option<String>,
+) -> Result<Value, String> {
+    let connection = db::open(&state)?;
+    correspondents::set_alias(&connection, correspondent_id, alias.as_deref())?;
+    let stored: Option<String> = connection
+        .query_row(
+            "SELECT alias FROM onemail_correspondents WHERE correspondent_id=?1",
+            [correspondent_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("读取备注名失败：{error}"))?;
+    Ok(json!({ "correspondentId": correspondent_id, "alias": stored }))
+}

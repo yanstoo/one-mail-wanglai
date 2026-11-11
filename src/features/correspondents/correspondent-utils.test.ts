@@ -31,6 +31,7 @@ function correspondent(overrides: Partial<CorrespondentSummary>): CorrespondentS
     address: 'alice@corp.test',
     addressDisplay: 'alice@corp.test',
     displayName: 'Alice',
+    alias: null,
     lastAt: '2026-11-01T09:00:00.000Z',
     junkLastAt: null,
     unreadCount: 2,
