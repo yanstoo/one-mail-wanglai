@@ -2,11 +2,20 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "add-account", "settings", "original-message"],
+  "windows": [
+    "main",
+    "add-account",
+    "settings",
+    "original-message"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
     "process:allow-exit",
-    "opener:default"
+    "opener:default",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-is-maximized"
   ]
 }

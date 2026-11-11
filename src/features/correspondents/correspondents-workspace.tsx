@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Inbox,
   MailPlus,
   Menu,
   PenLine,
@@ -11,10 +10,11 @@ import {
   UserPlus,
   X
 } from 'lucide-react'
-import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { MailComposer } from '@renderer/components/mail/mail-composer'
+import { WindowControls } from '@renderer/components/window-controls'
 import { createComposeDraft, loadAccounts, saveComposedDraft, sendComposedMessage } from '@renderer/lib/api'
 import type { ComposeDraft, ComposeKind, SendMessageInput } from '@renderer/lib/api/types'
 import { cn } from '@renderer/lib/utils'
@@ -29,15 +29,13 @@ function messageKey(message: CorrespondentThreadMessage): string {
   return `${message.source}:${message.messageId}`
 }
 
-/** 顶栏右上角的 ≡ 菜单：设置 / 添加账号 / 经典收件箱。 */
+/** 顶栏右上角的 ≡ 菜单：添加账号 / 设置。 */
 function TopMenu({
   onAddAccount,
-  onOpenSettings,
-  onOpenLegacyInbox
+  onOpenSettings
 }: {
   onAddAccount: () => void
   onOpenSettings: () => void
-  onOpenLegacyInbox: () => void
 }): React.JSX.Element {
   const [open, setOpen] = React.useState(false)
   return (
@@ -86,17 +84,6 @@ function TopMenu({
             >
               <Settings className="size-3.5" aria-hidden="true" /> 设置
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
-              onClick={() => {
-                setOpen(false)
-                onOpenLegacyInbox()
-              }}
-            >
-              <Inbox className="size-3.5" aria-hidden="true" /> 经典收件箱
-            </button>
           </div>
         </>
       ) : null}
@@ -106,7 +93,6 @@ function TopMenu({
 
 export function CorrespondentsWorkspace(): React.JSX.Element {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const searchRef = React.useRef<HTMLInputElement | null>(null)
 
   const [group, setGroup] = React.useState<CorrespondentGroup>('normal')
@@ -194,6 +180,14 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
       void queryClient.invalidateQueries({ queryKey: ['correspondents'] })
     })
   }, [queryClient])
+
+  /** 无边框窗口：顶栏空白处按住拖动，交互控件不触发。 */
+  const handleTitlebarMouseDown = (event: React.MouseEvent<HTMLElement>): void => {
+    if (event.button !== 0) return
+    const target = event.target as HTMLElement
+    if (target.closest('button, a, input, select, textarea')) return
+    void getCurrentWindow().startDragging().catch(() => null)
+  }
 
   const refresh = (): void => {
     setRefreshing(true)
@@ -334,12 +328,16 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
   return (
     <div className="flex h-screen min-h-0 flex-col bg-background">
       {/* 顶栏：设计稿布局 —— 左侧留交通灯位、中间全局搜索、右侧同步/写邮件/菜单 */}
-      <header className="app-titlebar app-drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border pl-[var(--app-titlebar-left-offset)] pr-3">
-        <div className="flex w-[220px] shrink-0 items-baseline gap-2">
-          <span className="text-[13px] font-semibold">OneMail 往来</span>
+      <header
+        onMouseDown={handleTitlebarMouseDown}
+        className="app-titlebar app-drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border pl-4 pr-3"
+      >
+        <div className="flex w-[220px] shrink-0 items-center gap-2.5">
+          <WindowControls />
+          <span className="ml-1 text-[13px] font-semibold">OneMail 往来</span>
         </div>
 
-        <div className="app-no-drag relative mx-auto w-full max-w-[460px]">
+        <div className="app-no-drag relative mx-auto w-full max-w-[460px]" data-tauri-drag-region="false">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
             aria-hidden="true"
@@ -395,11 +393,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
             <PenLine className="size-3.5" aria-hidden="true" />
             写邮件
           </button>
-          <TopMenu
-            onAddAccount={openAddAccount}
-            onOpenSettings={() => openSettings('general')}
-            onOpenLegacyInbox={() => navigate('/mailbox')}
-          />
+          <TopMenu onAddAccount={openAddAccount} onOpenSettings={() => openSettings('general')} />
         </div>
       </header>
 
