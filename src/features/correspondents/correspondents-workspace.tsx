@@ -167,11 +167,21 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
     }
   }, [selectedMessage])
 
-  // 打开未读邮件时回写已读
+  // 打开未读邮件时回写已读，并同步刷新左栏未读角标与中栏气泡样式
   React.useEffect(() => {
     if (!selectedMessage || selectedMessage.source !== 'mail' || selectedMessage.isRead) return
-    void window.api.messages.setReadState(selectedMessage.messageId, true).catch(() => null)
-  }, [selectedMessage])
+    const messageId = selectedMessage.messageId
+    void window.api.messages
+      .setReadState(messageId, true)
+      .then(() => {
+        setSelectedMessage((current) =>
+          current && current.messageId === messageId ? { ...current, isRead: true } : current
+        )
+        // 后端已更新 onemail_correspondent_messages.is_read，这里重新取列表/角标/中栏
+        void queryClient.invalidateQueries({ queryKey: ['correspondents'] })
+      })
+      .catch(() => null)
+  }, [queryClient, selectedMessage])
 
   // 同步完成后刷新
   React.useEffect(() => {

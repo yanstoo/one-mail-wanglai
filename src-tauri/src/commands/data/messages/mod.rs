@@ -141,20 +141,58 @@ async fn set_read_state(
         .map_err(database_error)?
         .ok_or_else(|| "邮件不存在。".to_string())?;
     drop(connection);
-    if target.5.as_deref().is_some_and(|cursor| cursor.starts_with("gmail-history:") || cursor.starts_with("graph-delta:")) {
-        persist_read_state(state, message_id, target.0, target.1, is_read, false)?;
+
+    let api_account = target.5.as_deref().is_some_and(|cursor| {
+        cursor.starts_with("gmail-history:") || cursor.starts_with("graph-delta:")
+    });
+
+    // 本地先行：离线 / 服务器不可达时也要能标记已读。
+    // read_state_override 同时保护该状态不被后续同步覆盖。
+    persist_read_state(state, message_id, target.0, target.1, is_read, false)?;
+
+    if api_account {
+        // Gmail / Graph 的已读在下次同步时随 delta 回写，本地即可视为完成
         return Ok(json!({
             "messageId": message_id, "accountId": target.0, "folderId": target.1,
             "isRead": is_read, "remoteSynced": false
         }));
     }
+
+    // 普通 IMAP：尽力把 \Seen 写到服务器；失败只降级为「仅本地」，不回滚本地状态
+    match remote_set_seen(state, &target, message_id, is_read).await {
+        Ok(()) => {
+            persist_read_state(state, message_id, target.0, target.1, is_read, true)?;
+            Ok(json!({
+                "messageId": message_id, "accountId": target.0, "folderId": target.1,
+                "isRead": is_read, "remoteSynced": true
+            }))
+        }
+        Err(error) => {
+            eprintln!("OneMail read-state remote update failed (local applied): {error}");
+            Ok(json!({
+            "messageId": message_id, "accountId": target.0, "folderId": target.1,
+            "isRead": is_read, "remoteSynced": false,
+            "warning": format!("已在本地标记为{状态}，但同步到服务器失败：{error}", 状态 = if is_read { "已读" } else { "未读" })
+            }))
+        }
+    }
+}
+
+/// 把已读状态写到 IMAP 服务器（﻿\Seen 标志）。失败由调用方降级处理。
+async fn remote_set_seen(
+    state: &AppState,
+    target: &(i64, i64, String, i64, Option<String>, Option<String>),
+    message_id: i64,
+    is_read: bool,
+) -> Result<(), String> {
+    let _ = message_id;
     let uid = u32::try_from(target.3).map_err(|_| "邮件 UID 无效，无法更新已读状态。".to_string())?;
     let account = mail_transport::load_account(state, target.0)?;
     let mut session = timeout(Duration::from_secs(30), mail_transport::connect_authenticated(state, &account))
-        .await.map_err(|_| "连接 IMAP 服务器超时，已读状态未更改。".to_string())??;
+        .await.map_err(|_| "连接 IMAP 服务器超时。".to_string())??;
     let mailbox = timeout(Duration::from_secs(30), session.select(&target.2))
-        .await.map_err(|_| "打开邮件文件夹超时，已读状态未更改。".to_string())?
-        .map_err(|error| format!("打开邮件文件夹失败，已读状态未更改：{error}"))?;
+        .await.map_err(|_| "打开邮件文件夹超时。".to_string())?
+        .map_err(|error| format!("打开邮件文件夹失败：{error}"))?;
     if target.4.as_deref().is_some_and(|expected| mailbox.uid_validity.map(|actual| actual.to_string()).as_deref() != Some(expected)) {
         return Err("邮件文件夹 UID 已变化，请先刷新邮箱再重试。".to_string());
     }
@@ -182,14 +220,7 @@ async fn set_read_state(
         return Err("服务器未确认已读状态，请刷新邮箱后重试。".to_string());
     }
     let _ = timeout(Duration::from_secs(10), session.logout()).await;
-    persist_read_state(state, message_id, target.0, target.1, is_read, true)?;
-    Ok(json!({
-        "messageId": message_id,
-        "accountId": target.0,
-        "folderId": target.1,
-        "isRead": is_read,
-        "remoteSynced": true
-    }))
+    Ok(())
 }
 
 fn persist_read_state(state: &AppState, message_id: i64, account_id: i64, folder_id: i64, is_read: bool, remote_synced: bool) -> Result<(), String> {

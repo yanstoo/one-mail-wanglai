@@ -76,6 +76,8 @@ function Bubble({
 }): React.JSX.Element {
   const mine = message.direction === 'out'
   const subject = message.subject?.trim() || '(无主题)'
+  // 只有收到的邮件才有未读概念；发件箱记录一律按已读展示
+  const unread = !mine && !message.isRead
   return (
     <div className={cn('flex flex-col', mine ? 'items-end' : 'items-start')}>
       <button
@@ -87,14 +89,23 @@ function Bubble({
             ? 'bg-primary text-primary-foreground'
             : message.isJunk
               ? 'border border-dashed border-border bg-muted/60 text-[#4a4a52] dark:text-muted-foreground'
-              : 'border border-border bg-background hover:bg-muted/40',
+              : unread
+                ? 'border border-primary/30 bg-background hover:bg-muted/40'
+                : 'border border-border bg-background hover:bg-muted/40',
           selected && !mine ? 'ring-2 ring-primary/40' : '',
           selected && mine ? 'ring-2 ring-primary/60 ring-offset-1' : ''
         )}
         title={subject}
       >
-        <span className="truncate">{subject}</span>
+        <span className={cn('truncate', unread && 'font-semibold')}>{subject}</span>
         {message.hasAttachment ? <Paperclip className="size-3 shrink-0 opacity-70" aria-hidden="true" /> : null}
+        {unread ? (
+          <span
+            className="size-1.5 shrink-0 rounded-full bg-primary"
+            title="未读"
+            aria-label="未读"
+          />
+        ) : null}
         {message.isJunk ? (
           <span className="shrink-0 rounded-full bg-[#f2f2f5] px-1.5 text-[9px] font-semibold text-[#9a9aa4]">
             垃圾
@@ -104,6 +115,7 @@ function Bubble({
       <span className="mt-0.5 px-1 text-[9.5px] text-muted-foreground">
         {formatRelativeTime(message.sentAt)}
         {message.isJunk ? ' · 垃圾邮件' : ''}
+        {unread ? ' · 未读' : ''}
       </span>
     </div>
   )

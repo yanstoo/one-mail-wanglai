@@ -167,4 +167,6 @@ export type MessageReadStateUpdate = {
   folderId: number
   isRead: boolean
   remoteSynced?: boolean
+  /** 已在本地生效、但同步到服务器失败时的提示 */
+  warning?: string
 }
