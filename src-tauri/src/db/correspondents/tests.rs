@@ -4,7 +4,7 @@ use rusqlite::{params, Connection};
 use serde_json::Value;
 
 use super::{
-    group_counts, list, on_read_state_changed, rebuild_all, thread, GROUP_JUNK, GROUP_NORMAL,
+    group_counts, list, on_read_state_changed, rebuild_all, set_alias, thread, GROUP_JUNK, GROUP_NORMAL,
 };
 
 const SEED: &str = "
@@ -329,4 +329,34 @@ fn user_deleted_messages_leave_the_index() {
             .is_empty(),
         "删除后联系人应离开索引"
     );
+}
+
+#[test]
+fn full_rebuild_preserves_contact_alias() {
+    let connection = setup();
+    let message_id = insert_message(&connection, 1, 1, 1, "备注名测试", "2026-11-01T09:00:00.000Z", 0);
+    add_address(&connection, message_id, "from", "grace@corp.test", "Grace");
+    add_address(&connection, message_id, "to", "me@a.test", "我");
+    rebuild_all(&connection).expect("rebuild index");
+
+    let correspondent_id: i64 = connection
+        .query_row(
+            "SELECT correspondent_id FROM onemail_correspondents WHERE address_norm='grace@corp.test'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("correspondent exists");
+    set_alias(&connection, correspondent_id, Some("老客户 Grace")).expect("set alias");
+
+    // 全量重建会删掉联系人行，备注名必须回填
+    rebuild_all(&connection).expect("rebuild again");
+
+    let alias: Option<String> = connection
+        .query_row(
+            "SELECT alias FROM onemail_correspondents WHERE address_norm='grace@corp.test'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("correspondent still exists");
+    assert_eq!(alias.as_deref(), Some("老客户 Grace"));
 }

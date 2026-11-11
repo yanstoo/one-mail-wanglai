@@ -84,8 +84,15 @@ pub(crate) fn publish_sync_result(app: &AppHandle, result: &Value, mode: Option<
             continue;
         };
         let changed_at = crate::db::now_iso();
-        if let Some(state) = app.try_state::<AppState>() {
-            super::correspondents::reindex_account(&state, account_id);
+        // 重建联系人索引是纯同步的 SQLite 批量写，放到阻塞线程池，
+        // 避免在 tokio 工作线程上卡住后续同步任务与 IPC。
+        {
+            let handle = app.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                if let Some(state) = handle.try_state::<AppState>() {
+                    super::correspondents::reindex_account(&state, account_id);
+                }
+            });
         }
         let _ = app.emit(
             "sync/mailboxChanged",

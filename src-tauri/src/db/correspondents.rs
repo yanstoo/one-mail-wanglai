@@ -520,6 +520,13 @@ fn self_addresses(connection: &Connection) -> Result<HashSet<String>, String> {
 }
 
 fn rebuild_links(connection: &Connection, account: Option<i64>) -> Result<(), String> {
+    // 全量重建会删掉联系人行，但备注名（alias）是用户手写的数据，必须先备份再回填。
+    let aliases = if account.is_none() {
+        load_aliases(connection)?
+    } else {
+        Vec::new()
+    };
+
     match account {
         Some(account_id) => {
             connection
@@ -554,7 +561,27 @@ fn rebuild_links(connection: &Connection, account: Option<i64>) -> Result<(), St
         )
         .map_err(|error| format!("清理空联系人失败：{error}"))?;
 
+    if !aliases.is_empty() {
+        let mut statement = connection
+            .prepare("UPDATE onemail_correspondents SET alias=?2 WHERE address_norm=?1")
+            .map_err(|error| format!("恢复备注名失败：{error}"))?;
+        for (address_norm, alias) in &aliases {
+            let _ = statement.execute(rusqlite::params![address_norm, alias]);
+        }
+    }
+
     refresh_aggregates(connection)
+}
+
+/// 读出全部非空备注名，用于全量重建后的回填。
+fn load_aliases(connection: &Connection) -> Result<Vec<(String, String)>, String> {
+    let mut statement = connection
+        .prepare("SELECT address_norm, alias FROM onemail_correspondents WHERE alias IS NOT NULL AND alias<>''")
+        .map_err(|error| format!("读取备注名失败：{error}"))?;
+    let rows = statement
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|error| format!("读取备注名失败：{error}"))?;
+    Ok(rows.filter_map(Result::ok).collect())
 }
 
 struct Participant {

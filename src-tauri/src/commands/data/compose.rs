@@ -433,7 +433,10 @@ fn build_quote(
 ) -> Result<String, String> {
     let from_name = optional_string(detail, "fromName").unwrap_or_default();
     let from_email = optional_string(detail, "fromEmail").unwrap_or_default();
-    let sent_at = optional_string(detail, "sentAt").unwrap_or_default();
+    // 详情 DTO 里用的是 receivedAt（服务端时间），兼容 sentAt
+    let sent_at = optional_string(detail, "sentAt")
+        .or_else(|| optional_string(detail, "receivedAt"))
+        .unwrap_or_default();
 
     let body_text: Option<String> = connection
         .query_row(
@@ -462,6 +465,15 @@ fn build_quote(
         quote.push_str(&format!(" · {when}"));
     }
     quote.push_str(" ---\n");
+    // body_html_sanitized 是 HTML，直接逐行引用会带一堆标签，先转成纯文本
+    let body_text = body_text.map(|text| {
+        if text.contains('<') && text.contains('>') {
+            crate::mail::body::format::html_to_text(&text)
+        } else {
+            text
+        }
+    });
+
     match body_text {
         Some(text) if !text.trim().is_empty() => {
             for line in text.trim_end().lines() {

@@ -1,4 +1,4 @@
-mod format;
+pub(crate) mod format;
 mod participants;
 
 pub(crate) use format::html_to_text;

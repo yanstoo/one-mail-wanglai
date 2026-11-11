@@ -16,6 +16,28 @@ use crate::{db, state::AppState};
 const SETTING_KEY: &str = "oauth.google_client_id";
 const ENV_KEY: &str = "ONEMAIL_GOOGLE_CLIENT_ID";
 
+/// 应用内保存的 Client ID。
+///
+/// 不往进程环境变量里写：`std::env::set_var` 在多线程下修改环境是不安全的
+/// （其它线程可能正在读 environ），这里用进程内静态存储，读取方走
+/// `google_client_id_override()`。
+static GOOGLE_CLIENT_ID_OVERRIDE: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// 供 `oauth::provider` 读取的应用内 Client ID。
+pub(crate) fn google_client_id_override() -> Option<String> {
+    GOOGLE_CLIENT_ID_OVERRIDE
+        .read()
+        .ok()
+        .and_then(|value| value.clone())
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn set_google_client_id_override(value: Option<String>) {
+    if let Ok(mut guard) = GOOGLE_CLIENT_ID_OVERRIDE.write() {
+        *guard = value;
+    }
+}
+
 /// 读取本地保存的 Client ID（不含环境变量）。
 pub(crate) fn stored_google_client_id(connection: &Connection) -> Result<Option<String>, String> {
     connection
@@ -68,10 +90,7 @@ pub(crate) fn apply_stored_google_client_id(state: &AppState) {
         return;
     };
     match stored_google_client_id(&connection) {
-        Ok(Some(client_id)) => {
-            // SAFETY: 单线程启动阶段调用，尚无其它线程读取该变量。
-            std::env::set_var(ENV_KEY, client_id);
-        }
+        Ok(Some(client_id)) => set_google_client_id_override(Some(client_id)),
         Ok(None) => {}
         Err(error) => eprintln!("OneMail google client id restore failed: {error}"),
     }
@@ -92,6 +111,7 @@ pub fn oauth_google_client_id(state: State<'_, AppState>) -> Result<Value, Strin
         (None, Some(value)) => (Some(value.clone()), "stored"),
         (None, None) => (None, "none"),
     };
+    // 环境变量优先级最高；本地保存值同时用于进程内覆盖
 
     Ok(json!({ "clientId": client_id, "source": source }))
 }
@@ -122,10 +142,7 @@ pub fn oauth_set_google_client_id(
     let connection = db::open(&state)?;
     write_stored_google_client_id(&connection, normalized.as_deref())?;
 
-    match &normalized {
-        Some(value) => std::env::set_var(ENV_KEY, value),
-        None => std::env::remove_var(ENV_KEY),
-    }
+    set_google_client_id_override(normalized.clone());
 
     Ok(json!({ "clientId": normalized, "saved": normalized.is_some() }))
 }

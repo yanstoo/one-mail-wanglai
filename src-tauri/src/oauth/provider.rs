@@ -122,7 +122,9 @@ impl OAuthProvider for GoogleOAuthProvider {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_owned);
+        let stored = crate::commands::data::oauth_config::google_client_id_override();
         runtime
+            .or(stored)
             .or(baked)
             .ok_or_else(|| {
                 "还没有配置 Google OAuth 客户端 ID。请在「添加账号 → Gmail → 使用 Google 登录」下方填写你自己的 Google 桌面客户端 ID（Google Cloud 控制台 → API 和服务 → 凭据 → 创建 OAuth 客户端 ID → 桌面应用），或改用「应用专用密码」登录。"
