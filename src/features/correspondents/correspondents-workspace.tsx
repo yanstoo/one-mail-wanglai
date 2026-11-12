@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { MailComposer } from '@renderer/components/mail/mail-composer'
+import { SettingsDialogHost } from '@renderer/components/settings/settings-dialog-host'
 import { WindowControls } from '@renderer/components/window-controls'
 import { createComposeDraft, loadAccounts, saveComposedDraft, sendComposedMessage } from '@renderer/lib/api'
 import type { ComposeDraft, ComposeKind, SendMessageInput } from '@renderer/lib/api/types'
@@ -110,7 +111,14 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
   const [outboxDetail, setOutboxDetail] = React.useState<OutboxMessage | null>(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
   const [detailError, setDetailError] = React.useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = React.useState(false)
   const [syncing, setSyncing] = React.useState(false)
+  const [syncProgress, setSyncProgress] = React.useState<{
+    completed: number
+    total: number
+    folder?: string | null
+    accountId?: number
+  } | null>(null)
 
   const [renameTarget, setRenameTarget] = React.useState<CorrespondentSummary | null>(null)
   const [renameValue, setRenameValue] = React.useState('')
@@ -133,11 +141,8 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
     })
   }
 
-  const openSettings = (section?: string): void => {
-    void window.api.system.openSettings(section).catch((error: unknown) => {
-      toast.error(error instanceof Error ? error.message : '打开设置失败')
-    })
-  }
+  // 设置改为主窗口内弹窗：不再单独建 WebView，也避免小窗口关不掉的问题
+  const openSettings = (): void => setSettingsOpen(true)
 
   // 选中联系人变化时清空右侧
   React.useEffect(() => {
@@ -215,6 +220,28 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
       .catch(() => null)
   }, [queryClient, selectedMessage])
 
+  // 新建账号后：刷新账号列表与联系人索引（之前要手动「重新加载页面」才看得到数据）
+  React.useEffect(() => {
+    const stop = window.api.accounts.onCreated(() => {
+      void queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      void queryClient.invalidateQueries({ queryKey: ['correspondents'] })
+      toast.success('账号已添加，正在载入往来记录…')
+    })
+    return stop
+  }, [queryClient])
+
+  // 同步进度：底部状态栏显示「已完成/总数 + 当前文件夹」
+  React.useEffect(() => {
+    return window.api.sync.onProgress((event) => {
+      setSyncProgress((current) => ({
+        completed: event.completed ?? current?.completed ?? 0,
+        total: event.total ?? current?.total ?? 0,
+        folder: event.folder ?? current?.folder ?? null,
+        accountId: event.accountId
+      }))
+    })
+  }, [])
+
   // 同步完成后刷新
   React.useEffect(() => {
     return window.api.sync.onMailboxChanged(() => {
@@ -230,6 +257,13 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
     void getCurrentWindow().startDragging().catch(() => null)
   }
 
+  /** 双击顶栏空白处：最大化 / 还原（与系统标题栏行为一致）。 */
+  const handleTitlebarDoubleClick = (event: React.MouseEvent<HTMLElement>): void => {
+    const target = event.target as HTMLElement
+    if (target.closest('button, a, input, select, textarea')) return
+    void getCurrentWindow().toggleMaximize().catch(() => null)
+  }
+
   const syncAll = (): void => {
     setSyncing(true)
     void window.api.sync
@@ -238,6 +272,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
       .catch((error: unknown) => toast.error(error instanceof Error ? error.message : '同步失败'))
       .finally(() => {
         setSyncing(false)
+        setSyncProgress(null)
         void queryClient.invalidateQueries({ queryKey: ['correspondents'] })
       })
   }
@@ -393,11 +428,11 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
       {/* 顶栏：设计稿布局 —— 左侧留交通灯位、中间全局搜索、右侧同步/写邮件/菜单 */}
       <header
         onMouseDown={handleTitlebarMouseDown}
+        onDoubleClick={handleTitlebarDoubleClick}
         className="app-titlebar app-drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border pl-4 pr-3"
       >
         <div className="flex w-[220px] shrink-0 items-center gap-2.5">
-          <WindowControls />
-          <span className="ml-1 text-[13px] font-semibold">OneMail 往来</span>
+          <span className="text-[13px] font-semibold">OneMail 往来</span>
         </div>
 
         <div className="app-no-drag relative mx-auto w-full max-w-[460px]" data-tauri-drag-region="false">
@@ -446,7 +481,8 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
             <PenLine className="size-3.5" aria-hidden="true" />
             写邮件
           </button>
-          <TopMenu onAddAccount={openAddAccount} onOpenSettings={() => openSettings('general')} />
+          <TopMenu onAddAccount={openAddAccount} onOpenSettings={openSettings} />
+          <WindowControls />
         </div>
       </header>
 
@@ -470,7 +506,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
             </button>
             <button
               type="button"
-              onClick={() => openSettings('general')}
+              onClick={() => openSettings()}
               className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[12px] hover:bg-muted"
             >
               <Settings className="size-3.5" aria-hidden="true" /> 打开设置
@@ -589,7 +625,16 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
         </div>
       ) : null}
 
+      <SettingsDialogHost open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
       <footer className="flex h-7 shrink-0 items-center gap-3 border-t border-border bg-[var(--native-statusbar)] px-3 text-[10.5px] text-muted-foreground">
+        {syncProgress ? (
+          <span className="flex items-center gap-1.5 text-primary">
+            <RefreshCw className="size-3 animate-spin" aria-hidden="true" />
+            同步中 {syncProgress.completed}/{syncProgress.total || '?'}
+            {syncProgress.folder ? ` · ${syncProgress.folder}` : ''}
+          </span>
+        ) : null}
         <span>{counts ? `${counts.normal.contacts} 位联系人` : '—'}</span>
         <span>普通未读 {counts?.normal.unread ?? 0}</span>
         <span>垃圾未读 {counts?.junk.unread ?? 0}</span>

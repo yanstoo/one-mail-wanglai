@@ -1,4 +1,5 @@
 export const enUSCommonSettings = {
+  'settings.accounts': 'Accounts',
   'settings.translate': 'Translation',
   'common.cancel': 'Cancel',
   'common.loading': 'Loading...',

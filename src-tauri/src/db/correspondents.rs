@@ -611,7 +611,9 @@ fn ingest_mail(
         "SELECT m.message_id, m.account_id, m.subject, m.has_attachments,
                 COALESCE(m.read_state_override, m.is_read),
                 f.role, m.junk_override,
-                COALESCE(NULLIF(m.sent_at,''), NULLIF(m.received_at,''),
+                -- 左栏按「最近一封邮件的到达时间」倒序：优先服务器接收时间 received_at，
+                -- 缺失时才回退到发件人声明时间/内部日期
+                COALESCE(NULLIF(m.received_at,''), NULLIF(m.sent_at,''),
                          NULLIF(m.internal_date,''), m.created_at),
                 a.normalized_email, a.email, a.name
          FROM onemail_mail_messages m

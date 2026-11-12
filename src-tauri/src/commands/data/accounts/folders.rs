@@ -57,13 +57,16 @@ pub(super) fn persist_sync_folders(
         } else {
             folder.is_selectable.unwrap_or(selectable_from_attributes) && selectable_from_attributes
         };
-        let sync_enabled = is_inbox || (folder.sync_enabled && is_selectable);
+        // 垃圾箱默认参与同步：UI 有「垃圾」分组，不拉取就永远是空的
+        let role_for_sync = mail_transport::folder_role(path, &folder.attributes);
+        let is_junk = role_for_sync == "junk";
+        let sync_enabled = is_inbox || is_junk || (folder.sync_enabled && is_selectable);
         let name = if is_inbox {
             "INBOX".to_string()
         } else {
             mail_transport::decode_modified_utf7(path)
         };
-        let role = mail_transport::folder_role(path, &folder.attributes);
+        let role = role_for_sync;
         let attributes_json = serde_json::to_string(&folder.attributes)
             .map_err(|error| format!("序列化文件夹属性失败：{error}"))?;
         let sort_order = if is_inbox { 0 } else { index as i64 + 1 };

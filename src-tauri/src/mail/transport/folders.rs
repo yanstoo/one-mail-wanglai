@@ -35,6 +35,7 @@ pub fn folder_role(path: &str, attributes: &[String]) -> &'static str {
         ("\\Drafts", "drafts"),
         ("\\Trash", "trash"),
         ("\\Junk", "junk"),
+        ("\\Spam", "junk"),
         ("\\Archive", "archive"),
         ("\\All", "all_mail"),
         ("\\Important", "important"),
@@ -44,6 +45,21 @@ pub fn folder_role(path: &str, attributes: &[String]) -> &'static str {
             .iter()
             .any(|value| value.eq_ignore_ascii_case(attribute))
         {
+            return role;
+        }
+    }
+    // 很多服务器（QQ/163 等）不给 \\Junk 属性，只给一个叫 Spam/垃圾邮件 的文件夹，
+    // 此时按名字兜底，否则这些邮件永远不会进入垃圾分组
+    let name = path.rsplit(['/', '.']).next().unwrap_or(path).to_lowercase();
+    for (needle, role) in [
+        ("junk", "junk"),
+        ("spam", "junk"),
+        ("垃圾", "junk"),
+        ("垃圾邮件", "junk"),
+        ("广告", "junk"),
+        ("廣告", "junk"),
+    ] {
+        if name.contains(needle) {
             return role;
         }
     }

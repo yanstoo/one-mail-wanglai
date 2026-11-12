@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { BadgeInfo, Bot, DatabaseBackup, RefreshCcw, Languages } from 'lucide-react'
+import { BadgeInfo, Bot, DatabaseBackup, RefreshCcw, Languages, Users } from 'lucide-react'
 import * as React from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import {
@@ -20,6 +20,7 @@ import { Button } from '@renderer/components/ui/button'
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import type{ AppSettings, AppUpdateStatus, AiSettings, AiSettingsInput, BackupImportResult, BackupImportSource, BackupSyncDownloadResult, BackupSyncSettings, SettingsUpdateInput, SystemInfo } from '@renderer/shared/types'
 import { useI18n, type TranslationKey } from '@renderer/lib/i18n'
+import { AccountsSettings } from './accounts-settings'
 import { AiSettingsForm } from './ai-settings'
 import { TranslationSettings } from './translation-settings'
 import { GeneralSettingsForm } from './general-settings'
@@ -46,7 +47,7 @@ type SettingsDialogProps = {
   onImported?: () => Promise<void> | void
 }
 
-type SettingsSection = 'general' | 'ai' | 'translate' | 'backup' | 'about'
+type SettingsSection = 'general' | 'accounts' | 'ai' | 'translate' | 'backup' | 'about'
 const AUTO_SAVE_DELAY_MS = 350
 
 const sections: Array<{
@@ -58,6 +59,11 @@ const sections: Array<{
     value: 'general',
     labelKey: 'settings.general',
     icon: RefreshCcw
+  },
+  {
+    value: 'accounts',
+    labelKey: 'settings.accounts',
+    icon: Users
   },
   {
     value: 'ai',
@@ -456,6 +462,9 @@ export function SettingsDialog({
         <div className="mx-auto max-w-xl space-y-7 px-4 py-4">
           <section ref={(node) => { sectionRefs.current.general = node ?? undefined }} aria-label={t('settings.general')}>
             <GeneralSettingsForm form={form} error={error} />
+          </section>
+          <section ref={(node) => { sectionRefs.current.accounts = node ?? undefined }} aria-label={t('settings.accounts')}>
+            <AccountsSettings />
           </section>
           <section ref={(node) => { sectionRefs.current.ai = node ?? undefined }} aria-label={t('settings.ai')}>
             <AiSettingsForm settings={aiSettings} onVerify={onVerifyAi} onClear={onClearAi} />

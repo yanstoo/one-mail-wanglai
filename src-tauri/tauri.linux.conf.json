@@ -10,7 +10,8 @@
         "minWidth": 920,
         "minHeight": 620,
         "center": true,
-        "decorations": false
+        "decorations": false,
+        "maximized": true
       }
     ]
   }
