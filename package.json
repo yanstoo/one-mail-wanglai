@@ -1,7 +1,7 @@
 {
   "name": "onemail",
   "private": true,
-  "version": "26.806.2208",
+  "version": "26.1112.2003",
   "type": "module",
   "packageManager": "pnpm@10.34.1",
   "scripts": {

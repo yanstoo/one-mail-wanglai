@@ -22,7 +22,8 @@ import type {
   CorrespondentGroup,
   CorrespondentSummary,
   CorrespondentThreadMessage,
-  MailMessageDetail
+  MailMessageDetail,
+  OutboxMessage
 } from '@renderer/shared/types'
 
 import { CorrespondentList } from './correspondent-list'
@@ -106,6 +107,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
   const [selectedId, setSelectedId] = React.useState<number | null>(null)
   const [selectedMessage, setSelectedMessage] = React.useState<CorrespondentThreadMessage | null>(null)
   const [detail, setDetail] = React.useState<MailMessageDetail | null>(null)
+  const [outboxDetail, setOutboxDetail] = React.useState<OutboxMessage | null>(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
   const [detailError, setDetailError] = React.useState<string | null>(null)
   const [syncing, setSyncing] = React.useState(false)
@@ -147,11 +149,33 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
   // 正文按需加载
   React.useEffect(() => {
     if (!selectedMessage) return
-    if (selectedMessage.source !== 'mail') {
+    if (selectedMessage.source === 'outbox') {
+      // 发件箱记录：从 outbox 表取正文与收件人，右栏照常展示（不再只提示去发件箱看）
       setDetail(null)
-      setDetailError('该记录来自发件箱，正文请在发件箱查看。')
-      return
+      setOutboxDetail(null)
+      setDetailLoading(true)
+      setDetailError(null)
+      const outboxId = selectedMessage.messageId
+      let cancelled = false
+      void window.api.compose
+        .listOutbox({ limit: 200 })
+        .then((items) => {
+          if (cancelled) return
+          const found = items.find((item) => item.outboxId === outboxId) ?? null
+          setOutboxDetail(found)
+          if (!found) setDetailError('这封已发送邮件已不在发件箱中。')
+        })
+        .catch((cause: unknown) => {
+          if (!cancelled) setDetailError(cause instanceof Error ? cause.message : String(cause))
+        })
+        .finally(() => {
+          if (!cancelled) setDetailLoading(false)
+        })
+      return () => {
+        cancelled = true
+      }
     }
+    setOutboxDetail(null)
     let cancelled = false
     setDetailLoading(true)
     setDetailError(null)
@@ -515,6 +539,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
             <CorrespondentMessageReader
               message={selectedMessage}
               detail={detail}
+              outbox={outboxDetail}
               loading={detailLoading}
               error={detailError}
               onReply={() => void startCompose('reply', replyTarget)}

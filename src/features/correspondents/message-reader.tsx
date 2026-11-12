@@ -3,7 +3,7 @@ import { CornerUpLeft, CornerUpRight, Forward, Languages, Mail, ShieldAlert, Tra
 
 import { formatAbsoluteTime } from '@renderer/components/mail/date-format'
 import { cn } from '@renderer/lib/utils'
-import type { CorrespondentThreadMessage, MailMessageDetail } from '@renderer/shared/types'
+import type { CorrespondentThreadMessage, MailMessageDetail, OutboxMessage } from '@renderer/shared/types'
 import { bodyKey, useTranslation } from './use-translation'
 
 /**
@@ -13,6 +13,7 @@ import { bodyKey, useTranslation } from './use-translation'
 export function CorrespondentMessageReader({
   message,
   detail,
+  outbox,
   loading,
   error,
   onReply,
@@ -23,6 +24,8 @@ export function CorrespondentMessageReader({
 }: {
   message: CorrespondentThreadMessage | null
   detail: MailMessageDetail | null
+  /** 记录来自发件箱时，直接渲染这封已发邮件的完整内容 */
+  outbox: OutboxMessage | null
   loading: boolean
   error: string | null
   onReply: () => void
@@ -41,10 +44,19 @@ export function CorrespondentMessageReader({
     )
   }
 
-  const subject = detail?.subject ?? message.subject ?? '(无主题)'
-  const from = [detail?.fromName, detail?.fromEmail].filter(Boolean).join(' · ')
-  const bodyText = detail?.body?.bodyText ?? ''
-  const bodyHtml = detail?.body?.bodyHtmlSanitized ?? ''
+  const isOutbox = message.source === 'outbox'
+  const subject = outbox?.subject ?? detail?.subject ?? message.subject ?? '(无主题)'
+  const from = isOutbox
+    ? '我（已发送）'
+    : [detail?.fromName, detail?.fromEmail].filter(Boolean).join(' · ')
+  const toLine = isOutbox
+    ? (outbox?.to ?? []).map((item) => item.email).filter(Boolean).join(', ')
+    : (detail?.to ?? '')
+  const ccLine = isOutbox
+    ? (outbox?.cc ?? []).map((item) => item.email).filter(Boolean).join(', ')
+    : (detail?.cc ?? '')
+  const bodyText = isOutbox ? (outbox?.bodyText ?? '') : (detail?.body?.bodyText ?? '')
+  const bodyHtml = isOutbox ? (outbox?.bodyHtml ?? '') : (detail?.body?.bodyHtmlSanitized ?? '')
 
   const translation = useTranslation()
   const translationKey = bodyKey(message.messageId)
@@ -88,6 +100,7 @@ export function CorrespondentMessageReader({
         >
           <Forward className="size-3.5" aria-hidden="true" /> 转发
         </button>
+        {isOutbox ? null : (
         <button
           type="button"
           onClick={onToggleJunk}
@@ -97,6 +110,7 @@ export function CorrespondentMessageReader({
           <ShieldAlert className="size-3.5" aria-hidden="true" />
           {message.isJunk ? '不是垃圾' : '标为垃圾'}
         </button>
+        )}
         <button
           type="button"
           onClick={onDelete}
@@ -117,10 +131,10 @@ export function CorrespondentMessageReader({
         <div className="mt-3 flex items-start justify-between gap-4 border-b border-border pb-3 text-[11px]">
           <div className="min-w-0">
             <p className="truncate font-semibold">{from || '—'}</p>
-            <p className="truncate text-muted-foreground">{detail?.to ? `收件人 ${detail.to}` : ''}</p>
-            {detail?.cc ? <p className="truncate text-muted-foreground">抄送 {detail.cc}</p> : null}
+            <p className="truncate text-muted-foreground">{toLine ? `收件人 ${toLine}` : ''}</p>
+            {ccLine ? <p className="truncate text-muted-foreground">抄送 {ccLine}</p> : null}
           </div>
-          <span className="shrink-0 text-muted-foreground">{formatAbsoluteTime(message.sentAt)}</span>
+          <span className="shrink-0 text-muted-foreground">{formatAbsoluteTime(outbox?.sentAt ?? message.sentAt)}</span>
         </div>
 
         {message.isJunk ? (

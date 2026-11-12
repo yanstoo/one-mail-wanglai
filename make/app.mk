@@ -26,5 +26,6 @@ build:
 
 # 打 Linux deb 并修补依赖声明（Tauri 的 depends 是追加，无法覆盖自动探测结果）
 deb:
+	@rm -rf src-tauri/target/release/bundle/deb
 	@$(PNPM) tauri build --bundles deb
 	@node scripts/patch-deb-depends.mjs

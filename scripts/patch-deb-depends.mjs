@@ -13,7 +13,7 @@
  *   不传路径时自动找 src-tauri/target/release/bundle/deb/*.deb
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -31,7 +31,11 @@ function findDeb() {
   if (!existsSync(dir)) throw new Error(`未找到 deb 目录：${dir}（先跑 pnpm tauri build --bundles deb）`)
   const files = readdirSync(dir).filter((name) => name.endsWith('.deb'))
   if (files.length === 0) throw new Error(`${dir} 下没有 .deb`)
-  return join(dir, files.sort()[files.length - 1])
+  // 必须按修改时间取最新：版本号是 YY.MMDD.HHMM，字符串排序会挑到旧包
+  const newest = files
+    .map((name) => ({ name, mtime: statSync(join(dir, name)).mtimeMs }))
+    .sort((left, right) => right.mtime - left.mtime)[0]
+  return join(dir, newest.name)
 }
 
 function run(command, args) {
