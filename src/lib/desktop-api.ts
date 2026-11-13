@@ -67,6 +67,8 @@ export function createDesktopApi(): OneMailApi {
       stats: () => command('messages_stats'),
       get: (messageId) => command('messages_get', { messageId }),
       loadBody: (messageId) => command('messages_load_body', { messageId }),
+      saveAttachment: (messageId, index) =>
+        command<string>('messages_save_attachment', { messageId, index }),
       setReadState: (messageId, isRead) =>
         command('messages_set_read_state', { messageId, isRead }),
       setJunkOverride: (messageId, junk) =>
@@ -142,6 +144,7 @@ export function createDesktopApi(): OneMailApi {
       openDevtools: () => command('system_open_devtools'),
       revealPath: (path) => command('system_reveal_path', { path }),
       openExternal: (url) => command('system_open_external', { url }),
+      openPath: (path) => command('system_open_path', { path }),
       openSettings: (section) => command('settings_open_window', { section: section ?? 'general' }),
       getGoogleClientId: () => command('oauth_google_client_id'),
       setGoogleClientId: (clientId) => command('oauth_set_google_client_id', { clientId })

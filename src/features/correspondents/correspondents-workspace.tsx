@@ -189,7 +189,9 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
     // 之前把 loadBody 的结果丢掉了，所以右栏永远显示「正文尚未缓存」
     void Promise.all([
       window.api.messages.get(messageId),
-      window.api.messages.loadBody(messageId).catch(() => null)
+      window.api.messages
+        .loadBody(messageId)
+        .catch((cause: unknown) => ({ body: null, error: cause instanceof Error ? cause.message : String(cause) }))
     ])
       .then(([loaded, bodyResult]) => {
         if (cancelled) return
@@ -225,8 +227,11 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
         )
         // 后端已更新 onemail_correspondent_messages.is_read，这里重新取列表/角标/中栏
         void queryClient.invalidateQueries({ queryKey: ['correspondents'] })
+        void queryClient.invalidateQueries({ queryKey: ['correspondent-thread'] })
       })
-      .catch(() => null)
+      .catch((cause: unknown) => {
+        toast.error(cause instanceof Error ? cause.message : '标记已读失败')
+      })
   }, [queryClient, selectedMessage])
 
   // 新建账号后：刷新账号列表与联系人索引（之前要手动「重新加载页面」才看得到数据）

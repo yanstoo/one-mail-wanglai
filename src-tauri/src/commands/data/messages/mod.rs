@@ -352,3 +352,12 @@ mod tests {
         })));
     }
 }
+
+#[tauri::command]
+pub async fn messages_save_attachment(
+    state: State<'_, AppState>,
+    message_id: i64,
+    index: usize,
+) -> Result<String, String> {
+    crate::mail::body::save_attachment(&state, message_id, index).await
+}

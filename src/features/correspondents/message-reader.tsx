@@ -2,6 +2,8 @@ import * as React from 'react'
 import { CornerUpLeft, CornerUpRight, Forward, Languages, Mail, ShieldAlert, Trash2 } from 'lucide-react'
 
 import { formatAbsoluteTime } from '@renderer/components/mail/date-format'
+import { toast } from 'sonner'
+
 import { cn } from '@renderer/lib/utils'
 import type { CorrespondentThreadMessage, MailMessageDetail, OutboxMessage } from '@renderer/shared/types'
 import { bodyKey, useTranslation } from './use-translation'
@@ -59,6 +61,21 @@ export function CorrespondentMessageReader({
   const bodyHtml = isOutbox ? (outbox?.bodyHtml ?? '') : (detail?.body?.bodyHtmlSanitized ?? '')
 
   const translation = useTranslation()
+  const [attachmentBusy, setAttachmentBusy] = React.useState<number | null>(null)
+
+  /** 附件不走正文缓存：按需从服务器取原始邮件、解析出附件、落到临时目录再交给系统打开。 */
+  async function openAttachment(index: number): Promise<void> {
+    if (!message) return
+    setAttachmentBusy(index)
+    try {
+      const path = await window.api.messages.saveAttachment(message.messageId, index)
+      await window.api.system.openPath(path)
+    } catch (cause: unknown) {
+      toast.error(cause instanceof Error ? cause.message : '打开附件失败')
+    } finally {
+      setAttachmentBusy(null)
+    }
+  }
   const translationKey = bodyKey(message.messageId)
   const translatedBody = translation.translationOf(translationKey)
   const translating = translation.pendingKey === translationKey
@@ -170,12 +187,25 @@ export function CorrespondentMessageReader({
 
         {detail?.attachments?.length ? (
           <div className="mt-5 border-t border-border pt-3">
-            <p className="text-[11px] font-semibold">附件（元数据）</p>
+            <p className="text-[11px] font-semibold">附件</p>
             <ul className="mt-1 space-y-1 text-[11px] text-muted-foreground">
-              {detail.attachments.map((attachment) => (
-                <li key={attachment.attachmentId} className="truncate">
-                  {attachment.filename} · {attachment.mimeType ?? '未知类型'} ·{' '}
-                  {Math.max(1, Math.round((attachment.sizeBytes ?? 0) / 1024))} KB
+              {detail.attachments.map((attachment, index) => (
+                <li
+                  key={attachment.attachmentId ?? `${attachment.filename}-${index}`}
+                  className="flex items-center gap-2"
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {attachment.filename} · {attachment.mimeType ?? '未知类型'} ·{' '}
+                    {Math.max(1, Math.round((attachment.sizeBytes ?? 0) / 1024))} KB
+                  </span>
+                  <button
+                    type="button"
+                    disabled={attachmentBusy === index}
+                    onClick={() => void openAttachment(index)}
+                    className="shrink-0 rounded px-1.5 py-0.5 text-[10.5px] text-primary hover:bg-primary/10 disabled:opacity-50"
+                  >
+                    {attachmentBusy === index ? '…' : '打开'}
+                  </button>
                 </li>
               ))}
             </ul>

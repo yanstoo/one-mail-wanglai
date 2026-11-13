@@ -1,4 +1,4 @@
-use std::{path::Path, process::Command};
+use std::{path::{Path, PathBuf}, process::Command};
 #[cfg(target_os = "macos")]
 use std::{io::{BufRead, BufReader, Write}, process::Stdio};
 use std::sync::{atomic::{AtomicU64, Ordering}, Mutex, OnceLock};
@@ -225,6 +225,17 @@ pub fn system_reveal_path(path: String) -> Result<bool, String> {
         return Ok(false);
     }
     reveal_path(Path::new(target))?;
+    Ok(true)
+}
+
+/// 用系统默认程序打开一个本地文件（附件预览用）。
+#[tauri::command]
+pub fn system_open_path(path: String) -> Result<bool, String> {
+    let target = PathBuf::from(&path);
+    if !target.exists() {
+        return Err("文件不存在，请重新下载附件。".to_string());
+    }
+    open_path(&target)?;
     Ok(true)
 }
 
@@ -515,6 +526,27 @@ fn javascript_platform() -> &'static str {
     return "linux";
     #[allow(unreachable_code)]
     "unknown"
+}
+
+fn open_path(path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let status = Command::new("open").arg(path).status();
+
+    #[cfg(target_os = "windows")]
+    let status = Command::new("cmd").args(["/C", "start", ""]).arg(path).status();
+
+    #[cfg(target_os = "linux")]
+    let status = Command::new("xdg-open").arg(path).status();
+
+    status
+        .map_err(|error| format!("打开文件失败：{error}"))
+        .and_then(|status| {
+            if status.success() {
+                Ok(())
+            } else {
+                Err("系统未能打开该文件。".to_string())
+            }
+        })
 }
 
 fn reveal_path(path: &Path) -> Result<(), String> {

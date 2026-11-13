@@ -29,7 +29,7 @@ pub(super) async fn sync_account_imap(
     scope: ImapSyncScope,
     on_step: Option<&SyncStepCallback<'_>>,
 ) -> Result<Value, String> {
-    let mut folders = load_imap_sync_folders(state, account.account_id)?;
+    let mut folders = load_imap_sync_folders(state, account.account_id).await?;
     match scope {
         ImapSyncScope::All => {}
         ImapSyncScope::Inbox => folders.retain(|folder| folder.path.eq_ignore_ascii_case("INBOX")),
@@ -156,12 +156,57 @@ struct ImapSyncFolder {
     path: String,
 }
 
-fn load_imap_sync_folders(
+
+/// 同步前把服务器上的文件夹同步到本地表。
+///
+/// 老账号可能只有 INBOX 一条记录（建号时没做文件夹发现），
+/// 结果垃圾箱等文件夹既不会被创建也不会被同步 —— 表现为「垃圾邮件完全没有拉取」。
+/// 规则：inbox 与 junk 默认开启同步，其余文件夹保留用户既有开关。
+async fn refresh_folders_from_server(
+    state: &AppState,
+    account: &mail_transport::MailAccount,
+    account_id: i64,
+) -> Result<(), String> {
+    let listed = mail_transport::list_all_folders(state, account).await?;
+    let connection = db::open(state)?;
+    for (path, role) in listed {
+        let sync_enabled = matches!(role.as_str(), "inbox" | "junk");
+        connection
+            .execute(
+                "INSERT INTO onemail_mail_folders
+                   (account_id,path,name,role,is_selectable,sync_enabled,sort_order)
+                 VALUES (?1,?2,?2,?3,1,?4,50)
+                 ON CONFLICT(account_id,path) DO UPDATE SET
+                   role=excluded.role,
+                   is_selectable=1,
+                   -- 已开启的保持开启；inbox/junk 强制开启
+                   sync_enabled=CASE
+                     WHEN excluded.role IN ('inbox','junk') THEN 1
+                     ELSE onemail_mail_folders.sync_enabled END,
+                   updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')",
+                rusqlite::params![account_id, path, role, i64::from(sync_enabled)],
+            )
+            .map_err(|error| format!("更新文件夹列表失败：{error}"))?;
+    }
+    Ok(())
+}
+
+async fn load_imap_sync_folders(
     state: &AppState,
     account_id: i64,
 ) -> Result<Vec<ImapSyncFolder>, String> {
+    {
+        let connection = db::open(state)?;
+        ensure_inbox(&connection, account_id)?;
+    }
+    // 每次都刷新一次文件夹表（幂等）：保证 junk 等文件夹被登记并纳入同步。
+    // 注意：rusqlite::Connection 不是 Send，连接不能跨 await 持有。
+    if let Ok(account) = mail_transport::load_account(state, account_id) {
+        if let Err(error) = refresh_folders_from_server(state, &account, account_id).await {
+            eprintln!("OneMail refresh folders failed: {error}");
+        }
+    }
     let connection = db::open(state)?;
-    ensure_inbox(&connection, account_id)?;
     let mut statement = connection
         .prepare(
             "SELECT folder_id,path FROM onemail_mail_folders

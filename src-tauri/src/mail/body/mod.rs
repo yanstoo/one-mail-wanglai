@@ -210,6 +210,63 @@ fn prefetch_candidates(state: &AppState, account_id: Option<i64>) -> Result<Vec<
 
 /// 预取正文：同步结束后调用，把窗口期内、体积可接受的邮件正文提前落库，
 /// 这样打开邮件不再依赖服务器文件夹状态。
+
+/// 把指定序号的附件写到本地临时目录，返回文件路径。
+///
+/// 附件不在正文缓存里（只存文本/HTML），所以这里按需重新取原始邮件再解析。
+pub async fn save_attachment(
+    state: &AppState,
+    message_id: i64,
+    index: usize,
+) -> Result<String, String> {
+    let locator = get_message_locator(state, message_id)?
+        .ok_or_else(|| format!("邮件不存在：{message_id}"))?;
+    let (raw_message, _) = mail_transport::fetch_raw_message(
+        state,
+        &locator.account,
+        &locator.folder_path,
+        locator.uid,
+        locator.rfc822_message_id.as_deref(),
+    )
+    .await?;
+    let parsed = parse_mail(&raw_message).map_err(|error| format!("解析邮件失败：{error}"))?;
+    let mut leaves = Vec::new();
+    collect_leaf_parts(&parsed, &mut leaves);
+
+    let mut attachments = Vec::new();
+    for part in &leaves {
+        let disposition = part.get_content_disposition();
+        let filename = disposition
+            .params
+            .get("filename")
+            .or_else(|| part.ctype.params.get("name"))
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let Some(filename) = filename else { continue };
+        if !matches!(disposition.disposition, DispositionType::Attachment | DispositionType::Inline) {
+            continue;
+        }
+        attachments.push((filename, part));
+    }
+
+    let (filename, part) = attachments
+        .get(index)
+        .ok_or_else(|| "找不到该附件，请重新打开邮件后再试。".to_string())?;
+    let bytes = part
+        .get_body_raw()
+        .map_err(|error| format!("读取附件内容失败：{error}"))?;
+
+    let safe_name = filename
+        .chars()
+        .map(|ch| if matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { ch })
+        .collect::<String>();
+    let dir = std::env::temp_dir().join("onemail-attachments").join(message_id.to_string());
+    std::fs::create_dir_all(&dir).map_err(|error| format!("创建附件目录失败：{error}"))?;
+    let path = dir.join(if safe_name.trim().is_empty() { "attachment".to_string() } else { safe_name });
+    std::fs::write(&path, bytes).map_err(|error| format!("写入附件失败：{error}"))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
 pub async fn prefetch_recent_bodies(
     state: &AppState,
     account_id: Option<i64>,
@@ -269,6 +326,11 @@ pub fn spawn_body_prefetch(app: &tauri::AppHandle, account_id: Option<i64>) {
 pub async fn load_message_body(state: &AppState, message_id: i64) -> Result<Value, String> {
     let locator = get_message_locator(state, message_id)?
         .ok_or_else(|| format!("邮件不存在：{message_id}"))?;
+    // 已有可用正文直接返回；空行视为未缓存（并清掉，保证能重试）
+    if let Some(body) = cached_body(state, message_id) {
+        return Ok(body);
+    }
+    drop_empty_body(state, message_id);
     set_body_status(state, message_id, "loading", None)?;
 
     let result: Result<(), String> = async {
@@ -534,6 +596,47 @@ fn collect_leaf_parts<'a>(part: &'a ParsedMail<'a>, leaves: &mut Vec<&'a ParsedM
     }
 }
 
+
+/// 读取已缓存的正文；正文为空的记录视为「未缓存」，避免占位文案卡死。
+fn cached_body(state: &AppState, message_id: i64) -> Option<Value> {
+    let connection = db::open(state).ok()?;
+    let value = connection
+        .query_row(
+            "SELECT body_text, body_html_sanitized, external_images_blocked
+             FROM onemail_message_bodies WHERE message_id=?1",
+            [message_id],
+            |row| {
+                Ok(json!({
+                    "messageId": message_id,
+                    "bodyText": row.get::<_, Option<String>>(0)?,
+                    "bodyHtmlSanitized": row.get::<_, Option<String>>(1)?,
+                    "externalImagesBlocked": row.get::<_, i64>(2).unwrap_or(0) != 0
+                }))
+            },
+        )
+        .ok()?;
+    let has_text = value.get("bodyText").and_then(Value::as_str).is_some_and(|v| !v.trim().is_empty());
+    let has_html = value.get("bodyHtmlSanitized").and_then(Value::as_str).is_some_and(|v| !v.trim().is_empty());
+    if has_text || has_html {
+        Some(value)
+    } else {
+        None
+    }
+}
+
+/// 删掉空的正文行（历史上解析失败会写一行全 NULL，导致永远不再重试）。
+fn drop_empty_body(state: &AppState, message_id: i64) {
+    if let Ok(connection) = db::open(state) {
+        let _ = connection.execute(
+            "DELETE FROM onemail_message_bodies
+             WHERE message_id=?1
+               AND COALESCE(TRIM(body_text),'')=''
+               AND COALESCE(TRIM(body_html_sanitized),'')=''",
+            [message_id],
+        );
+    }
+}
+
 fn persist_message_body(
     state: &AppState,
     message_id: i64,
@@ -546,6 +649,10 @@ fn persist_message_body(
         .map(normalize_body_text)
         .filter(|value| !value.is_empty());
     let body_html = parsed.html.as_deref().and_then(sanitize_html);
+    // 解析不出任何正文时不要落库：写进去会让后续重试被"已有记录"挡住
+    if body_text.is_none() && body_html.is_none() {
+        return Err("这封邮件没有可解析的正文（可能是纯附件、加密或服务器未返回内容）".to_string());
+    }
     let search_text = body_text
         .as_deref()
         .map(str::to_string)

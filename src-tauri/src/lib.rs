@@ -155,6 +155,7 @@ pub fn run() {
             data::messages::messages_get,
             data::messages::messages_load_body,
             data::messages::messages_set_read_state,
+            data::messages::messages_save_attachment,
             data::messages::messages_set_junk_override,
             data::messages::messages_set_deleted,
             data::oauth_config::oauth_google_client_id,

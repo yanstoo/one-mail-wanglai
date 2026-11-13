@@ -34,6 +34,7 @@ export type OneMailApi = {
     stats: () => Promise<AccountMailboxStats[]>
     get: (messageId: number) => Promise<MailMessageDetail | null>
     loadBody: (messageId: number) => Promise<MailMessageBodyLoadResult>
+    saveAttachment: (messageId: number, index: number) => Promise<string>
     setReadState: (messageId: number, isRead: boolean) => Promise<MessageReadStateUpdate>
     /** junk: true=标为垃圾，false=不是垃圾，null=跟随文件夹 */
     setJunkOverride: (messageId: number, junk: boolean | null) => Promise<{ messageId: number; junkOverride: boolean | null }>
@@ -104,6 +105,7 @@ export type OneMailApi = {
     openDevtools: () => Promise<boolean>
     revealPath: (path: string) => Promise<boolean>
     openExternal: (url: string) => Promise<boolean>
+    openPath: (path: string) => Promise<boolean>
     openSettings: (section?: string) => Promise<boolean>
     /** Google OAuth 客户端 ID：source 为 env / stored / none */
     getGoogleClientId: () => Promise<{ clientId: string | null; source: 'env' | 'stored' | 'none' }>
