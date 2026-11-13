@@ -42,6 +42,16 @@ export function SettingsDialogHost({
   const [updateStatus, setUpdateStatus] = React.useState<AppUpdateStatus | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
+  // Esc 关闭
+  React.useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, onClose])
+
   React.useEffect(() => {
     if (!open) return
     let active = true
@@ -78,7 +88,19 @@ export function SettingsDialogHost({
     <>
       <div className="fixed inset-0 z-[70] bg-black/40" onClick={onClose} aria-hidden="true" />
       <div className="fixed inset-0 z-[71] flex items-center justify-center p-6" role="dialog" aria-modal="true">
-        <div className="h-[min(560px,85vh)] w-[min(720px,92vw)] overflow-hidden rounded-xl border border-border bg-muted shadow-2xl">
+        <div className="relative h-[min(560px,85vh)] w-[min(720px,92vw)] overflow-hidden rounded-xl border border-border bg-muted shadow-2xl">
+          {/* 主窗口内的弹窗没有系统装饰，必须自带关闭按钮 */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="关闭设置"
+            title="关闭设置（Esc）"
+            className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+          >
+            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+            </svg>
+          </button>
           {error ? (
             <p role="alert" className="p-5 text-sm text-destructive">
               {error}

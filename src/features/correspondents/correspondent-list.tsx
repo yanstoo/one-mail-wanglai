@@ -29,12 +29,16 @@ function Avatar({ correspondent }: { correspondent: CorrespondentSummary }): Rea
   const first = correspondent.accounts[0]
   const color = first ? badgeColor(first, 0) : '#2d70d2'
   return (
-    <span
-      aria-hidden="true"
-      className="flex size-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white"
-      style={{ backgroundColor: color }}
-    >
-      {initialOf(correspondent)}
+    // relative：徽标绝对定位在头像右下角，徽标再长也不挤压行内布局
+    <span className="relative shrink-0">
+      <span
+        aria-hidden="true"
+        className="flex size-8 items-center justify-center rounded-full text-[13px] font-semibold text-white"
+        style={{ backgroundColor: color }}
+      >
+        {initialOf(correspondent)}
+      </span>
+      <BadgeStack correspondent={correspondent} />
     </span>
   )
 }
@@ -46,18 +50,21 @@ function BadgeStack({ correspondent }: { correspondent: CorrespondentSummary }):
   const { shown, extra } = visibleBadges(accounts, badgeTotal)
 
   return (
-    <span className="flex items-center gap-0.5" title={badgeTooltip(accounts)}>
+    <span
+      className="absolute -bottom-1 left-1/2 flex max-w-[72px] -translate-x-1/2 items-center gap-0.5"
+      title={badgeTooltip(accounts)}
+    >
       {shown.map((account, index) => (
         <span
           key={account.accountId}
-          className="rounded-[4px] px-1 text-[9px] font-bold leading-4 text-white"
+          className="max-w-[52px] truncate rounded-[3px] px-1 text-[8px] font-bold leading-[13px] text-white shadow-[0_0_0_1px_var(--background)]"
           style={{ backgroundColor: badgeColor(account, index) }}
         >
           {account.badge}
         </span>
       ))}
       {extra > 0 ? (
-        <span className="rounded-[4px] bg-muted px-1 text-[9px] font-semibold leading-4 text-muted-foreground">
+        <span className="rounded-[3px] bg-muted px-1 text-[8px] font-semibold leading-[13px] text-muted-foreground shadow-[0_0_0_1px_var(--background)]">
           +{extra}
         </span>
       ) : null}

@@ -64,7 +64,7 @@ export function AccountsSettings(): React.JSX.Element {
       await window.api.accounts.update({
         accountId: account.accountId,
         accountLabel: draftLabel.trim() || undefined,
-        badgeLabel: draftBadge.trim().slice(0, 2) || null,
+        badgeLabel: draftBadge.trim().slice(0, 10) || null,
         badgeColor: draftColor
       })
       await reload()
@@ -101,7 +101,8 @@ export function AccountsSettings(): React.JSX.Element {
             <p className="p-3 text-[11.5px] text-muted-foreground">还没有添加邮箱账号。</p>
           ) : (
             accounts.map((account) => (
-              <div key={account.accountId} className="flex items-start gap-2 p-3">
+              <div key={account.accountId} className="space-y-2 p-3">
+                <div className="flex items-start gap-2">
                 <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <UserRound className="size-3.5" aria-hidden="true" />
                 </span>
@@ -157,6 +158,7 @@ export function AccountsSettings(): React.JSX.Element {
                     <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
+                </div>
                 {editingId === account.accountId ? (
                   <div className="mt-2 w-full space-y-2 rounded-lg border border-border bg-background/60 p-2">
                     <div className="grid grid-cols-2 gap-2">
@@ -170,12 +172,12 @@ export function AccountsSettings(): React.JSX.Element {
                         />
                       </label>
                       <label className="text-[11px]">
-                        短徽标（≤2 字）
+                        短徽标（≤10 字，悬浮显示）
                         <Input
                           value={draftBadge}
-                          maxLength={2}
+                          maxLength={10}
                           onChange={(event) => setDraftBadge(event.target.value)}
-                          placeholder="G / QQ"
+                          placeholder="G / QQ / 工作邮箱"
                           className="mt-1 h-7 text-[11.5px]"
                         />
                       </label>
