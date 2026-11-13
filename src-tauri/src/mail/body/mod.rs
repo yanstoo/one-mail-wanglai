@@ -51,23 +51,35 @@ struct ParsedAttachment {
 /// 返回 (文件夹路径, uid)；命中后调用方负责把新的 folder_id/uid 写回本地库。
 
 /// 邮件被移动到别的文件夹后，把新的 folder_id/uid 写回本地记录。
+/// 邮件被移动到别的文件夹后，把新的 folder_id/uid 写回本地记录。
+///
+/// 参数是 RFC822 Message-ID（字符串），不是 mail_messages.message_id；
+/// 按 Message-ID 定位行、按该行取 account_id。
 fn rebind_message_location(
     state: &AppState,
-    message_id: &str,
+    rfc822_message_id: &str,
     folder_path: &str,
     uid: u32,
 ) -> Result<(), String> {
     let connection = db::open(state)?;
-    let folder_id: Option<i64> = connection
+    let account_id: i64 = connection
         .query_row(
-            "SELECT folder_id FROM onemail_mail_folders WHERE path=?1
-             AND account_id=(SELECT account_id FROM onemail_mail_folders WHERE path=?1 LIMIT 1)",
-            [folder_path],
+            "SELECT account_id FROM onemail_mail_messages WHERE rfc822_message_id=?1 LIMIT 1",
+            [rfc822_message_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("读取邮件所属账号失败：{error}"))?;
+
+    let existing: Option<i64> = connection
+        .query_row(
+            "SELECT folder_id FROM onemail_mail_folders WHERE account_id=?1 AND path=?2",
+            rusqlite::params![account_id, folder_path],
             |row| row.get(0),
         )
         .optional()
         .map_err(|error| format!("读取文件夹失败：{error}"))?;
-    let folder_id = match folder_id {
+
+    let folder_id = match existing {
         Some(id) => id,
         None => {
             // 这个文件夹之前没同步过：补一条记录，保证下次直接命中
@@ -76,32 +88,23 @@ fn rebind_message_location(
                     "INSERT INTO onemail_mail_folders (account_id,path,name,role,sync_enabled,sort_order)
                      VALUES (?1,?2,?2,'custom',0,99)
                      ON CONFLICT(account_id,path) DO NOTHING",
-                    rusqlite::params![
-                        connection
-                            .query_row(
-                                "SELECT account_id FROM onemail_mail_messages WHERE message_id=?1",
-                                [message_id],
-                                |row| row.get::<_, i64>(0),
-                            )
-                            .map_err(|error| format!("读取邮件所属账号失败：{error}"))?,
-                        folder_path
-                    ],
+                    rusqlite::params![account_id, folder_path],
                 )
                 .map_err(|error| format!("登记新文件夹失败：{error}"))?;
             connection
                 .query_row(
-                    "SELECT folder_id FROM onemail_mail_folders WHERE path=?1 LIMIT 1",
-                    [folder_path],
+                    "SELECT folder_id FROM onemail_mail_folders WHERE account_id=?1 AND path=?2",
+                    rusqlite::params![account_id, folder_path],
                     |row| row.get(0),
                 )
                 .map_err(|error| format!("读取文件夹失败：{error}"))?
         }
     };
+
     connection
         .execute(
-            "UPDATE onemail_mail_messages SET folder_id=?2, uid=?3
-             WHERE rfc822_message_id=?1",
-            rusqlite::params![message_id, folder_id, i64::from(uid)],
+            "UPDATE onemail_mail_messages SET folder_id=?2, uid=?3 WHERE rfc822_message_id=?1",
+            rusqlite::params![rfc822_message_id, folder_id, i64::from(uid)],
         )
         .map_err(|error| format!("更新邮件位置失败：{error}"))?;
     Ok(())

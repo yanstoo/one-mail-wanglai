@@ -6,19 +6,12 @@ import { ContextMenu, useContextMenu } from '@renderer/components/context-menu'
 import { formatRelativeTime } from '@renderer/components/mail/date-format'
 import { cn } from '@renderer/lib/utils'
 import type {
-  CorrespondentBadge,
   CorrespondentGroup,
   CorrespondentGroupCounts,
   CorrespondentSummary
 } from '@renderer/shared/types'
 
-import { badgeTooltip, groupLastAt, groupUnreadCount, visibleBadges } from './correspondent-utils'
-
-const BADGE_FALLBACK_COLORS = ['#2d70d2', '#ea4335', '#12b7f5', '#ff6a00', '#7b61c9', '#227a4b']
-
-function badgeColor(badge: CorrespondentBadge, index: number): string {
-  return badge.color ?? BADGE_FALLBACK_COLORS[index % BADGE_FALLBACK_COLORS.length]
-}
+import { autoColor, domainLabel, groupLastAt, groupUnreadCount } from './correspondent-utils'
 
 function initialOf(correspondent: CorrespondentSummary): string {
   const source = correspondent.displayName?.trim() || correspondent.address
@@ -26,48 +19,60 @@ function initialOf(correspondent: CorrespondentSummary): string {
 }
 
 function Avatar({ correspondent }: { correspondent: CorrespondentSummary }): React.JSX.Element {
+  const initial = initialOf(correspondent)
   const first = correspondent.accounts[0]
-  const color = first ? badgeColor(first, 0) : '#2d70d2'
+  // 头像底色与自动徽标同一套「按首字母轮询」配色；账号徽标颜色不用这套
+  const color = autoColor(initial)
   return (
-    // relative：徽标绝对定位在头像右下角，徽标再长也不挤压行内布局
     <span className="relative shrink-0">
       <span
         aria-hidden="true"
-        className="flex size-8 items-center justify-center rounded-full text-[13px] font-semibold text-white"
+        className="flex size-9 items-center justify-center rounded-[10px] text-[14px] font-semibold text-white"
         style={{ backgroundColor: color }}
       >
-        {initialOf(correspondent)}
+        {initial}
       </span>
-      <BadgeStack correspondent={correspondent} />
+      {first ? (
+        // 账号短徽标只占头像右下角一个小角，再长也不影响行内布局
+        <span
+          className="absolute -bottom-1 -right-1 max-w-[40px] truncate rounded-[4px] px-1 text-[8.5px] font-bold leading-[13px] text-white shadow-[0_0_0_1.5px_var(--background)]"
+          style={{ backgroundColor: first.color ?? '#2d70d2' }}
+          title={first.badge}
+        >
+          {first.badge}
+        </span>
+      ) : null}
     </span>
   )
 }
 
-/** 徽标：最多 2 个，溢出用 +N，hover 展示全部账号。 */
-function BadgeStack({ correspondent }: { correspondent: CorrespondentSummary }): React.JSX.Element | null {
-  const { accounts, badgeTotal } = correspondent
-  if (accounts.length === 0) return null
-  const { shown, extra } = visibleBadges(accounts, badgeTotal)
+/** 单独一行的徽标：域名徽标（自动配色）+ 其余账号徽标，右对齐。 */
+function BadgeRow({ correspondent }: { correspondent: CorrespondentSummary }): React.JSX.Element | null {
+  const domain = domainLabel(correspondent.address)
+  const others = correspondent.accounts.slice(1)
+  if (!domain && others.length === 0) return null
 
   return (
-    <span
-      className="absolute -bottom-1 left-1/2 flex max-w-[72px] -translate-x-1/2 items-center gap-0.5"
-      title={badgeTooltip(accounts)}
-    >
-      {shown.map((account, index) => (
+    <span className="mt-1 flex flex-wrap items-center justify-end gap-1">
+      {domain ? (
+        <span
+          className="max-w-[64px] truncate rounded-[4px] px-1.5 text-[9px] font-semibold leading-[15px] text-white"
+          style={{ backgroundColor: autoColor(domain) }}
+          title={correspondent.address}
+        >
+          {domain}
+        </span>
+      ) : null}
+      {others.map((account) => (
         <span
           key={account.accountId}
-          className="max-w-[52px] truncate rounded-[3px] px-1 text-[8px] font-bold leading-[13px] text-white shadow-[0_0_0_1px_var(--background)]"
-          style={{ backgroundColor: badgeColor(account, index) }}
+          className="max-w-[64px] truncate rounded-[4px] px-1.5 text-[9px] font-semibold leading-[15px] text-white"
+          style={{ backgroundColor: account.color ?? '#2d70d2' }}
+          title={account.badge}
         >
           {account.badge}
         </span>
       ))}
-      {extra > 0 ? (
-        <span className="rounded-[3px] bg-muted px-1 text-[8px] font-semibold leading-[13px] text-muted-foreground shadow-[0_0_0_1px_var(--background)]">
-          +{extra}
-        </span>
-      ) : null}
     </span>
   )
 }
@@ -215,7 +220,7 @@ export function CorrespondentList({
                 ])
               }
               className={cn(
-                'relative mb-0.5 flex w-full items-start gap-2 rounded-lg px-1.5 py-1.5 text-left',
+                'relative mb-0.5 flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left',
                 selected ? 'bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/10' : 'hover:bg-white/60 dark:hover:bg-white/10'
               )}
             >
@@ -224,23 +229,21 @@ export function CorrespondentList({
               ) : null}
               <Avatar correspondent={correspondent} />
               <span className="min-w-0 flex-1">
-                <span className="flex items-center justify-between gap-1">
-                  <span className="truncate text-[12.5px] font-semibold">
+                <span className="flex items-baseline justify-between gap-1.5">
+                  <span className="truncate text-[13px] font-semibold leading-5">
                     {correspondent.alias?.trim() || correspondent.displayName?.trim() || correspondent.address}
                   </span>
-                  <span className="flex shrink-0 items-center gap-1">
-                    <UnreadPill count={unread} tone={group === 'junk' ? 'junk' : 'normal'} />
-                    <span className="text-[10.5px] text-muted-foreground">
-                      {lastAt ? formatRelativeTime(lastAt) : ''}
-                    </span>
+                  <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                    {lastAt ? formatRelativeTime(lastAt) : ''}
                   </span>
                 </span>
-                <span className="mt-0.5 flex items-center justify-between gap-1">
-                  <span className="truncate text-[11px] text-muted-foreground">
+                <span className="mt-0.5 flex items-center justify-between gap-2">
+                  <span className="truncate text-[11.5px] leading-4 text-muted-foreground">
                     {correspondent.lastSubject?.trim() || correspondent.address}
                   </span>
-                  <BadgeStack correspondent={correspondent} />
+                  <UnreadPill count={unread} tone={group === 'junk' ? 'junk' : 'normal'} />
                 </span>
+                <BadgeRow correspondent={correspondent} />
               </span>
             </button>
           )
