@@ -67,6 +67,8 @@ pub async fn sync_start_account(
 }
 
 pub(crate) fn publish_sync_result(app: &AppHandle, result: &Value, mode: Option<&str>, reason: &str) {
+    // 同步完成即预取正文（最近 30 天、≤5MB），让打开邮件不依赖服务器文件夹状态
+    crate::mail::body::spawn_body_prefetch(app, None);
     let account_results = result
         .get("accounts")
         .and_then(Value::as_array)

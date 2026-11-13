@@ -97,6 +97,9 @@ pub fn run() {
             app.manage(state);
             background::start(app.handle())?;
             prewarm_settings_window(app.handle().clone());
+            // 启动后补一轮正文预取，把历史邮件的正文补齐
+            std::thread::sleep(std::time::Duration::from_secs(4));
+            crate::mail::body::spawn_body_prefetch(app.handle(), None);
             Ok(())
         })
         .on_window_event(|window, event| {

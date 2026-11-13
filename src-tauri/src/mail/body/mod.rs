@@ -164,6 +164,108 @@ async fn relocate_message(
     None
 }
 
+
+/// 同步后预取正文的限额：只补最近 30 天、单封 ≤5MB 的邮件。
+const PREFETCH_WINDOW_DAYS: i64 = 30;
+const PREFETCH_MAX_BYTES: i64 = 5 * 1024 * 1024;
+/// 每轮最多补多少封，避免一次同步把带宽打满。
+const PREFETCH_BATCH: usize = 40;
+
+/// 列出需要预取正文的邮件（本地还没有正文、体积在限额内、发生在窗口期内）。
+fn prefetch_candidates(state: &AppState, account_id: Option<i64>) -> Result<Vec<i64>, String> {
+    let connection = db::open(state)?;
+    let mut statement = connection
+        .prepare(
+            "SELECT m.message_id
+             FROM onemail_mail_messages m
+             JOIN onemail_mail_folders f ON f.folder_id = m.folder_id
+             LEFT JOIN onemail_message_bodies b ON b.message_id = m.message_id
+             WHERE b.message_id IS NULL
+               AND m.is_draft = 0 AND m.user_deleted = 0 AND m.is_deleted = 0
+               AND f.role NOT IN ('drafts','trash')
+               -- 体积未知（0）也纳入：很多服务器不返回 size，漏掉会导致永远不预取
+               AND (m.size_bytes = 0 OR m.size_bytes <= ?1)
+               AND COALESCE(m.received_at, m.sent_at, m.internal_date) >=
+                   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?2)
+               AND (?3 IS NULL OR m.account_id = ?3)
+             ORDER BY COALESCE(m.received_at, m.sent_at, m.internal_date) DESC
+             LIMIT ?4",
+        )
+        .map_err(|error| format!("读取预取列表失败：{error}"))?;
+    let rows = statement
+        .query_map(
+            rusqlite::params![
+                PREFETCH_MAX_BYTES,
+                format!("-{PREFETCH_WINDOW_DAYS} day"),
+                account_id,
+                PREFETCH_BATCH as i64
+            ],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| format!("读取预取列表失败：{error}"))?
+        .filter_map(Result::ok)
+        .collect::<Vec<_>>();
+    Ok(rows)
+}
+
+/// 预取正文：同步结束后调用，把窗口期内、体积可接受的邮件正文提前落库，
+/// 这样打开邮件不再依赖服务器文件夹状态。
+pub async fn prefetch_recent_bodies(
+    state: &AppState,
+    account_id: Option<i64>,
+) -> Result<(usize, usize), String> {
+    let candidates = prefetch_candidates(state, account_id)?;
+    let mut ok = 0usize;
+    let mut failed = 0usize;
+    for message_id in candidates {
+        match load_message_body(state, message_id).await {
+            Ok(_) => {
+                ok += 1;
+            }
+            Err(_) => failed += 1,
+        }
+        // 给服务器留点喘息的间隔
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    }
+    Ok((ok, failed))
+}
+
+/// 在后台跑一轮预取，不阻塞同步返回。
+///
+/// 同步是逐账号回调的，多个账号会重复触发；用 60 秒冷却做去重。
+pub fn spawn_body_prefetch(app: &tauri::AppHandle, account_id: Option<i64>) {
+    use std::sync::atomic::{AtomicI64, Ordering};
+    static LAST_RUN: AtomicI64 = AtomicI64::new(0);
+    let now = chrono::Utc::now().timestamp();
+    let previous = LAST_RUN.load(Ordering::Relaxed);
+    if now - previous < 60 {
+        return;
+    }
+    if LAST_RUN
+        .compare_exchange(previous, now, Ordering::Relaxed, Ordering::Relaxed)
+        .is_err()
+    {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        use tauri::Manager as _;
+        let state = app.state::<crate::state::AppState>();
+        match prefetch_recent_bodies(&state, account_id).await {
+            Ok((ok, failed)) if ok > 0 || failed > 0 => {
+                let _ = crate::client_log::write(
+                    &app,
+                    &format!("INFO Body prefetch ok={ok} failed={failed}"),
+                );
+            }
+            Ok(_) => {}
+            Err(error) => {
+                let _ = crate::client_log::write(&app, &format!("WARN Body prefetch error {error}"));
+            }
+        }
+    });
+}
+
 pub async fn load_message_body(state: &AppState, message_id: i64) -> Result<Value, String> {
     let locator = get_message_locator(state, message_id)?
         .ok_or_else(|| format!("邮件不存在：{message_id}"))?;
