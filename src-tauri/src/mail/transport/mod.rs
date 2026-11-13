@@ -226,6 +226,103 @@ async fn connect_with_password(
     Ok(session)
 }
 
+
+/// 在指定文件夹里按 RFC822 Message-ID 搜索 UID。
+///
+/// 注意：IMAP 的 `HEADER` 搜索键后跟的是 astring，Message-ID 里的 `<>@`
+/// 必须整体加引号，否则服务器可能解析失败或匹配不到。
+pub async fn search_uid_by_message_id(
+    state: &AppState,
+    account: &MailAccount,
+    folder_path: &str,
+    message_id: &str,
+) -> Result<Option<u32>, String> {
+    let trimmed = message_id.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let mut session = connect_authenticated(state, account).await?;
+    session
+        .select(folder_path)
+        .await
+        .map_err(|error| format!("打开邮箱文件夹失败：{error}"))?;
+    let query = format!("HEADER Message-ID \"{trimmed}\"");
+    let found = session
+        .uid_search(query)
+        .await
+        .map_err(|error| format!("按 Message-ID 查找邮件失败：{error}"))?
+        .into_iter()
+        .next();
+    let _ = session.logout().await;
+    Ok(found)
+}
+
+
+/// 分段抓取：部分服务器（大小限制/实现缺陷）会拒绝整体 `BODY.PEEK[]`，
+/// 但对 `BODY.PEEK[HEADER]` 与带区间的 `BODY.PEEK[TEXT]<off.len>` 正常响应。
+/// 拼成完整 RFC822 消息返回（头部 + 正文）。
+async fn fetch_partial_message(session: &mut ImapSession, uid: u32) -> Result<Vec<u8>, String> {
+    const CHUNK: usize = 60_000;
+    const MAX_CHUNKS: usize = 200;
+
+    let mut header = Vec::new();
+    {
+        let mut stream = session
+            .uid_fetch(uid.to_string(), "BODY.PEEK[HEADER]")
+            .await
+            .map_err(|error| format!("读取邮件头部失败：{error}"))?;
+        while let Some(fetch) = stream
+            .try_next()
+            .await
+            .map_err(|error| format!("读取邮件头部失败：{error}"))?
+        {
+            if let Some(value) = fetch.body() {
+                header = value.to_vec();
+                break;
+            }
+        }
+    }
+    if header.is_empty() {
+        return Err("服务器连邮件头部都没有返回".to_string());
+    }
+
+    let mut text: Vec<u8> = Vec::new();
+    for index in 0..MAX_CHUNKS {
+        let start = index * CHUNK;
+        let request = format!("BODY.PEEK[TEXT]<{start}.{CHUNK}>");
+        let mut stream = session
+            .uid_fetch(uid.to_string(), request)
+            .await
+            .map_err(|error| format!("分段读取邮件正文失败：{error}"))?;
+        let mut received = 0usize;
+        while let Some(fetch) = stream
+            .try_next()
+            .await
+            .map_err(|error| format!("分段读取邮件正文失败：{error}"))?
+        {
+            if let Some(value) = fetch.body() {
+                received = value.len();
+                text.extend_from_slice(value);
+                break;
+            }
+        }
+        if received < CHUNK {
+            break;
+        }
+    }
+    if text.is_empty() {
+        return Err("服务器分段返回的正文也是空的".to_string());
+    }
+
+    let mut combined = header;
+    if !combined.ends_with(b"\r\n") {
+        combined.extend_from_slice(b"\r\n");
+    }
+    combined.extend_from_slice(b"\r\n");
+    combined.extend_from_slice(&text);
+    Ok(combined)
+}
+
 pub async fn fetch_raw_message(
     state: &AppState,
     account: &MailAccount,
@@ -304,7 +401,7 @@ pub async fn fetch_raw_message(
     if body.is_none() {
         if let Some(message_id) = message_id.map(str::trim).filter(|value| !value.is_empty()) {
             let search = session
-                .uid_search(format!("HEADER Message-ID {message_id}"))
+                .uid_search(format!("HEADER Message-ID \"{message_id}\""))
                 .await
                 .map_err(|error| format!("按 Message-ID 查找邮件失败：{error}"))?;
             if let Some(found) = search.iter().copied().next() {
@@ -330,6 +427,14 @@ pub async fn fetch_raw_message(
             } else {
                 attempts.push("按 Message-ID 未在该文件夹找到该邮件（可能已被移动或删除）".to_string());
             }
+        }
+    }
+
+    // 最后兜底：分段抓取（应对服务器对整封邮件的大小限制）
+    if body.is_none() {
+        match fetch_partial_message(&mut session, uid).await {
+            Ok(value) => body = Some(value),
+            Err(error) => attempts.push(format!("分段抓取: {error}")),
         }
     }
 

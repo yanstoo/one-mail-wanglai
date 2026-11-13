@@ -46,20 +46,126 @@ struct ParsedAttachment {
     size_bytes: usize,
 }
 
+
+/// 在原文件夹找不到时，去该账号的其他文件夹按 Message-ID 重新定位。
+/// 返回 (文件夹路径, uid)；命中后调用方负责把新的 folder_id/uid 写回本地库。
+
+/// 邮件被移动到别的文件夹后，把新的 folder_id/uid 写回本地记录。
+fn rebind_message_location(
+    state: &AppState,
+    message_id: &str,
+    folder_path: &str,
+    uid: u32,
+) -> Result<(), String> {
+    let connection = db::open(state)?;
+    let folder_id: Option<i64> = connection
+        .query_row(
+            "SELECT folder_id FROM onemail_mail_folders WHERE path=?1
+             AND account_id=(SELECT account_id FROM onemail_mail_folders WHERE path=?1 LIMIT 1)",
+            [folder_path],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("读取文件夹失败：{error}"))?;
+    let Some(folder_id) = folder_id else {
+        return Ok(());
+    };
+    connection
+        .execute(
+            "UPDATE onemail_mail_messages SET folder_id=?2, uid=?3
+             WHERE rfc822_message_id=?1",
+            rusqlite::params![message_id, folder_id, i64::from(uid)],
+        )
+        .map_err(|error| format!("更新邮件位置失败：{error}"))?;
+    Ok(())
+}
+
+async fn relocate_message(
+    state: &AppState,
+    locator: &MessageLocator,
+    message_id: &str,
+) -> Option<(String, u32)> {
+    let folders = {
+        let connection = db::open(state).ok()?;
+        let mut statement = connection
+            .prepare(
+                "SELECT path FROM onemail_mail_folders
+                 WHERE account_id=?1 AND path<>?2 AND role NOT IN ('drafts','trash')
+                 ORDER BY CASE WHEN role='junk' THEN 1 ELSE 0 END, folder_id",
+            )
+            .ok()?;
+        let collected = statement
+            .query_map(
+                rusqlite::params![locator.account.account_id, locator.folder_path],
+                |row| row.get::<_, String>(0),
+            )
+            .ok()?
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+        collected
+    };
+
+    for folder in folders {
+        match mail_transport::search_uid_by_message_id(
+            state,
+            &locator.account,
+            &folder,
+            message_id,
+        )
+        .await
+        {
+            Ok(Some(uid)) => return Some((folder, uid)),
+            Ok(None) => continue,
+            Err(error) => eprintln!("OneMail relocate search failed in {folder}: {error}"),
+        }
+    }
+    None
+}
+
 pub async fn load_message_body(state: &AppState, message_id: i64) -> Result<Value, String> {
     let locator = get_message_locator(state, message_id)?
         .ok_or_else(|| format!("邮件不存在：{message_id}"))?;
     set_body_status(state, message_id, "loading", None)?;
 
     let result: Result<(), String> = async {
-        let (raw_message, resolved_uid) = mail_transport::fetch_raw_message(
+        // 先试原文件夹；不行再跨文件夹按 Message-ID 定位（邮件可能被服务端规则移走）
+        let fetched = match mail_transport::fetch_raw_message(
             state,
             &locator.account,
             &locator.folder_path,
             locator.uid,
             locator.rfc822_message_id.as_deref(),
         )
-        .await?;
+        .await
+        {
+            Ok(value) => Ok(Some(value)),
+            Err(error) => {
+                if let Some(message_id) = locator.rfc822_message_id.as_deref() {
+                    if let Some((folder, uid)) = relocate_message(state, &locator, message_id).await {
+                        match mail_transport::fetch_raw_message(
+                            state,
+                            &locator.account,
+                            &folder,
+                            uid,
+                            Some(message_id),
+                        )
+                        .await
+                        {
+                            Ok((raw, _)) => {
+                                rebind_message_location(state, message_id, &folder, uid)?;
+                                Ok(Some((raw, Some(uid))))
+                            }
+                            Err(folder_error) => Err(format!("{error}；在其他文件夹重试也失败：{folder_error}")),
+                        }
+                    } else {
+                        Err(format!("{error}；按 Message-ID 在所有文件夹都未找到该邮件"))
+                    }
+                } else {
+                    Err(error)
+                }
+            }
+        }?;
+        let (raw_message, resolved_uid) = fetched.expect("fetch guarded above");
         let parsed = parse_message(&raw_message)?;
         persist_message_body(state, message_id, locator.account.account_id, parsed)?;
         // UID 发生过漂移时把新 UID 写回，下次直接命中
