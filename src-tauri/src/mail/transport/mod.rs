@@ -227,6 +227,44 @@ async fn connect_with_password(
 }
 
 
+
+/// 直接向服务器枚举全部可选文件夹：(path, role)。
+///
+/// 抓正文时不能只依赖本地已同步的文件夹——邮件可能被服务端规则移到一个
+/// 从未同步过的文件夹，那就永远找不到。
+pub async fn list_all_folders(
+    state: &AppState,
+    account: &MailAccount,
+) -> Result<Vec<(String, String)>, String> {
+    let mut session = connect_authenticated(state, account).await?;
+    let mut folders = Vec::new();
+    {
+        let mut stream = session
+            .list(Some(""), Some("*"))
+            .await
+            .map_err(|error| format!("列举 IMAP 文件夹失败：{error}"))?;
+        while let Some(folder) = stream
+            .try_next()
+            .await
+            .map_err(|error| format!("读取 IMAP 文件夹失败：{error}"))?
+        {
+            let path = folder.name().to_string();
+            let attributes = folder
+                .attributes()
+                .iter()
+                .map(name_attribute_value)
+                .collect::<Vec<_>>();
+            if !is_folder_selectable(&attributes) {
+                continue;
+            }
+            let role = folder_role(&path, &attributes).to_string();
+            folders.push((path, role));
+        }
+    }
+    let _ = session.logout().await;
+    Ok(folders)
+}
+
 /// 在指定文件夹里按 RFC822 Message-ID 搜索 UID。
 ///
 /// 注意：IMAP 的 `HEADER` 搜索键后跟的是 astring，Message-ID 里的 `<>@`

@@ -67,8 +67,35 @@ fn rebind_message_location(
         )
         .optional()
         .map_err(|error| format!("读取文件夹失败：{error}"))?;
-    let Some(folder_id) = folder_id else {
-        return Ok(());
+    let folder_id = match folder_id {
+        Some(id) => id,
+        None => {
+            // 这个文件夹之前没同步过：补一条记录，保证下次直接命中
+            connection
+                .execute(
+                    "INSERT INTO onemail_mail_folders (account_id,path,name,role,sync_enabled,sort_order)
+                     VALUES (?1,?2,?2,'custom',0,99)
+                     ON CONFLICT(account_id,path) DO NOTHING",
+                    rusqlite::params![
+                        connection
+                            .query_row(
+                                "SELECT account_id FROM onemail_mail_messages WHERE message_id=?1",
+                                [message_id],
+                                |row| row.get::<_, i64>(0),
+                            )
+                            .map_err(|error| format!("读取邮件所属账号失败：{error}"))?,
+                        folder_path
+                    ],
+                )
+                .map_err(|error| format!("登记新文件夹失败：{error}"))?;
+            connection
+                .query_row(
+                    "SELECT folder_id FROM onemail_mail_folders WHERE path=?1 LIMIT 1",
+                    [folder_path],
+                    |row| row.get(0),
+                )
+                .map_err(|error| format!("读取文件夹失败：{error}"))?
+        }
     };
     connection
         .execute(
@@ -85,34 +112,46 @@ async fn relocate_message(
     locator: &MessageLocator,
     message_id: &str,
 ) -> Option<(String, u32)> {
-    let folders = {
-        let connection = db::open(state).ok()?;
-        let mut statement = connection
-            .prepare(
-                "SELECT path FROM onemail_mail_folders
-                 WHERE account_id=?1 AND path<>?2 AND role NOT IN ('drafts','trash')
-                 ORDER BY CASE WHEN role='junk' THEN 1 ELSE 0 END, folder_id",
-            )
-            .ok()?;
-        let collected = statement
-            .query_map(
-                rusqlite::params![locator.account.account_id, locator.folder_path],
-                |row| row.get::<_, String>(0),
-            )
-            .ok()?
-            .filter_map(Result::ok)
-            .collect::<Vec<_>>();
-        collected
+    // 服务器上的全部可选文件夹（含从未同步过的），按「最可能包含全量邮件」排序：
+    // \All / Archive 最先（这类文件夹通常收拢了所有邮件），其次垃圾箱，最后其余
+    let mut folders = match mail_transport::list_all_folders(state, &locator.account).await {
+        Ok(list) => list,
+        Err(error) => {
+            eprintln!("OneMail list folders failed: {error}");
+            Vec::new()
+        }
     };
+    if folders.is_empty() {
+        // 列举失败时退回本地已知文件夹
+        if let Ok(connection) = db::open(state) {
+            if let Ok(mut statement) = connection.prepare(
+                "SELECT path, role FROM onemail_mail_folders WHERE account_id=?1",
+            ) {
+                if let Ok(rows) = statement.query_map(
+                    rusqlite::params![locator.account.account_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                ) {
+                    folders = rows.filter_map(Result::ok).collect();
+                }
+            }
+        }
+    }
 
-    for folder in folders {
-        match mail_transport::search_uid_by_message_id(
-            state,
-            &locator.account,
-            &folder,
-            message_id,
-        )
-        .await
+    let rank = |role: &str| match role {
+        "all_mail" => 0,
+        "archive" => 1,
+        "junk" => 2,
+        "trash" | "drafts" => 9,
+        _ => 5,
+    };
+    folders.sort_by_key(|(_, role)| rank(role));
+
+    for (folder, role) in folders {
+        if role == "drafts" || role == "trash" || folder == locator.folder_path {
+            continue;
+        }
+        match mail_transport::search_uid_by_message_id(state, &locator.account, &folder, message_id)
+            .await
         {
             Ok(Some(uid)) => return Some((folder, uid)),
             Ok(None) => continue,
