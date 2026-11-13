@@ -35,6 +35,12 @@ export type OneMailApi = {
     get: (messageId: number) => Promise<MailMessageDetail | null>
     loadBody: (messageId: number) => Promise<MailMessageBodyLoadResult>
     saveAttachment: (messageId: number, index: number) => Promise<string>
+    attachmentPayload: (
+      messageId: number,
+      index: number
+    ) => Promise<{ filename: string; mimeType: string; sizeBytes: number; base64: string }>
+    saveAttachmentAs: (messageId: number, index: number, targetPath: string) => Promise<string>
+    downloadAttachment: (messageId: number, index: number) => Promise<string>
     setReadState: (messageId: number, isRead: boolean) => Promise<MessageReadStateUpdate>
     /** junk: true=标为垃圾，false=不是垃圾，null=跟随文件夹 */
     setJunkOverride: (messageId: number, junk: boolean | null) => Promise<{ messageId: number; junkOverride: boolean | null }>

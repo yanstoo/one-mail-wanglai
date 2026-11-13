@@ -61,17 +61,69 @@ export function CorrespondentMessageReader({
   const bodyHtml = isOutbox ? (outbox?.bodyHtml ?? '') : (detail?.body?.bodyHtmlSanitized ?? '')
 
   const translation = useTranslation()
-  const [attachmentBusy, setAttachmentBusy] = React.useState<number | null>(null)
+  const [attachmentBusy, setAttachmentBusy] = React.useState<string | null>(null)
+  const [attachments, setAttachments] = React.useState<
+    { index: number; filename: string; mimeType: string; sizeBytes: number }[]
+  >([])
+  const [preview, setPreview] = React.useState<
+    { index: number; filename: string; mimeType: string; dataUrl: string } | null
+  >(null)
 
-  /** 附件不走正文缓存：按需从服务器取原始邮件、解析出附件、落到临时目录再交给系统打开。 */
-  async function openAttachment(index: number): Promise<void> {
+  /**
+   * 附件元数据来自 messages_get；但老库/同步阶段可能没写全，
+   * 这里按需补齐：优先用 detail.attachments，其次沿用之前列表。
+   */
+  React.useEffect(() => {
+    const list = (detail?.attachments ?? []).map((item, index) => ({
+      index,
+      filename: item.filename,
+      mimeType: item.mimeType ?? '',
+      sizeBytes: item.sizeBytes ?? 0
+    }))
+    setAttachments(list)
+    setPreview(null)
+  }, [detail])
+
+  function busyKey(action: string, index: number): string {
+    return `${action}:${index}`
+  }
+
+  /** 预览：图片直接内嵌显示；其它类型交给系统程序打开。 */
+  async function previewAttachment(index: number): Promise<void> {
     if (!message) return
-    setAttachmentBusy(index)
+    setAttachmentBusy(busyKey('preview', index))
     try {
-      const path = await window.api.messages.saveAttachment(message.messageId, index)
-      await window.api.system.openPath(path)
+      const payload = await window.api.messages.attachmentPayload(message.messageId, index)
+      const isImage = payload.mimeType.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(payload.filename)
+      if (isImage && payload.sizeBytes <= 8 * 1024 * 1024) {
+        setPreview({
+          index,
+          filename: payload.filename,
+          mimeType: payload.mimeType,
+          dataUrl: `data:${payload.mimeType || 'image/png'};base64,${payload.base64}`
+        })
+      } else {
+        // PDF 等 WebView 内无插件可渲染：落盘后用系统程序打开
+        const path = await window.api.messages.saveAttachment(message.messageId, index)
+        await window.api.system.openPath(path)
+        toast.message('该类型不支持内嵌预览，已用系统程序打开')
+      }
     } catch (cause: unknown) {
-      toast.error(cause instanceof Error ? cause.message : '打开附件失败')
+      toast.error(typeof cause === 'string' ? cause : '预览附件失败')
+    } finally {
+      setAttachmentBusy(null)
+    }
+  }
+
+  /** 下载：保存到「下载」目录，重名自动加序号。 */
+  async function downloadAttachment(index: number): Promise<void> {
+    if (!message) return
+    setAttachmentBusy(busyKey('download', index))
+    try {
+      const path = await window.api.messages.downloadAttachment(message.messageId, index)
+      toast.success(`已保存到 ${path}`)
+    } catch (cause: unknown) {
+      toast.error(typeof cause === 'string' ? cause : '下载附件失败')
     } finally {
       setAttachmentBusy(null)
     }
@@ -185,26 +237,51 @@ export function CorrespondentMessageReader({
           </>
         ) : null}
 
-        {detail?.attachments?.length ? (
+        {preview ? (
+          <div className="mt-4 rounded-lg border border-border bg-muted/40 p-2">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="truncate text-[11px]">{preview.filename}</span>
+              <button
+                type="button"
+                className="shrink-0 rounded px-1.5 py-0.5 text-[10.5px] text-muted-foreground hover:bg-black/5"
+                onClick={() => setPreview(null)}
+              >
+                收起
+              </button>
+            </div>
+            <img
+              src={preview.dataUrl}
+              alt={preview.filename}
+              className="mx-auto max-h-[320px] max-w-full rounded object-contain"
+            />
+          </div>
+        ) : null}
+
+        {attachments.length ? (
           <div className="mt-5 border-t border-border pt-3">
             <p className="text-[11px] font-semibold">附件</p>
             <ul className="mt-1 space-y-1 text-[11px] text-muted-foreground">
-              {detail.attachments.map((attachment, index) => (
-                <li
-                  key={attachment.attachmentId ?? `${attachment.filename}-${index}`}
-                  className="flex items-center gap-2"
-                >
+              {attachments.map((attachment) => (
+                <li key={`${attachment.filename}-${attachment.index}`} className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate">
-                    {attachment.filename} · {attachment.mimeType ?? '未知类型'} ·{' '}
-                    {Math.max(1, Math.round((attachment.sizeBytes ?? 0) / 1024))} KB
+                    {attachment.filename} · {attachment.mimeType || '未知类型'} ·{' '}
+                    {Math.max(1, Math.round(attachment.sizeBytes / 1024))} KB
                   </span>
                   <button
                     type="button"
-                    disabled={attachmentBusy === index}
-                    onClick={() => void openAttachment(index)}
+                    disabled={attachmentBusy === busyKey('preview', attachment.index)}
+                    onClick={() => void previewAttachment(attachment.index)}
                     className="shrink-0 rounded px-1.5 py-0.5 text-[10.5px] text-primary hover:bg-primary/10 disabled:opacity-50"
                   >
-                    {attachmentBusy === index ? '…' : '打开'}
+                    {attachmentBusy === busyKey('preview', attachment.index) ? '…' : '预览'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={attachmentBusy === busyKey('download', attachment.index)}
+                    onClick={() => void downloadAttachment(attachment.index)}
+                    className="shrink-0 rounded px-1.5 py-0.5 text-[10.5px] text-primary hover:bg-primary/10 disabled:opacity-50"
+                  >
+                    {attachmentBusy === busyKey('download', attachment.index) ? '…' : '下载'}
                   </button>
                 </li>
               ))}

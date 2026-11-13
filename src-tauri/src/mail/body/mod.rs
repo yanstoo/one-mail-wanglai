@@ -11,6 +11,7 @@ use mailparse::{
 };
 use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
 
 use crate::{
     db,
@@ -210,6 +211,154 @@ fn prefetch_candidates(state: &AppState, account_id: Option<i64>) -> Result<Vec<
 
 /// 预取正文：同步结束后调用，把窗口期内、体积可接受的邮件正文提前落库，
 /// 这样打开邮件不再依赖服务器文件夹状态。
+
+
+
+/// 「下载」：把附件保存到用户的下载目录（重名自动加序号），返回最终路径。
+pub async fn download_attachment(
+    state: &AppState,
+    message_id: i64,
+    index: usize,
+) -> Result<String, String> {
+    let (filename, _, bytes) = read_attachment(state, message_id, index).await?;
+    let dir = download_dir();
+    std::fs::create_dir_all(&dir).map_err(|error| format!("创建下载目录失败：{error}"))?;
+
+    let safe_name: String = filename
+        .chars()
+        .map(|ch| if matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { ch })
+        .collect();
+    let stem = Path::new(&safe_name)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("attachment")
+        .to_string();
+    let ext = Path::new(&safe_name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| format!(".{value}"))
+        .unwrap_or_default();
+
+    let mut target = dir.join(format!("{stem}{ext}"));
+    let mut counter = 1;
+    while target.exists() {
+        target = dir.join(format!("{stem} ({counter}){ext}"));
+        counter += 1;
+        if counter > 999 {
+            break;
+        }
+    }
+    std::fs::write(&target, bytes).map_err(|error| format!("写入文件失败：{error}"))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// 用户下载目录（Linux/macOS/Windows 都取 $HOME/Downloads）。
+fn download_dir() -> PathBuf {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join("Downloads")
+}
+
+/// 读出附件字节（预览用）。仅用于小文件，调用方需自带大小上限。
+pub async fn attachment_payload(
+    state: &AppState,
+    message_id: i64,
+    index: usize,
+) -> Result<Value, String> {
+    let (filename, mime_type, bytes) = read_attachment(state, message_id, index).await?;
+    Ok(json!({
+        "filename": filename,
+        "mimeType": mime_type,
+        "sizeBytes": bytes.len(),
+        "base64": base64_encode(&bytes)
+    }))
+}
+
+/// 把附件写到调用方指定的路径（「下载 / 另存为」）。
+pub async fn save_attachment_as(
+    state: &AppState,
+    message_id: i64,
+    index: usize,
+    target_path: &str,
+) -> Result<String, String> {
+    let (_, _, bytes) = read_attachment(state, message_id, index).await?;
+    std::fs::write(target_path, bytes).map_err(|error| format!("写入文件失败：{error}"))?;
+    Ok(target_path.to_string())
+}
+
+/// 取第 index 个附件的 (文件名, MIME, 字节)。
+async fn read_attachment(
+    state: &AppState,
+    message_id: i64,
+    index: usize,
+) -> Result<(String, String, Vec<u8>), String> {
+    let locator = get_message_locator(state, message_id)?
+        .ok_or_else(|| format!("邮件不存在：{message_id}"))?;
+    let (raw_message, _) = mail_transport::fetch_raw_message(
+        state,
+        &locator.account,
+        &locator.folder_path,
+        locator.uid,
+        locator.rfc822_message_id.as_deref(),
+    )
+    .await?;
+    let parsed = parse_mail(&raw_message).map_err(|error| format!("解析邮件失败：{error}"))?;
+    let mut leaves = Vec::new();
+    collect_leaf_parts(&parsed, &mut leaves);
+
+    let mut attachments = Vec::new();
+    for part in &leaves {
+        let disposition = part.get_content_disposition();
+        let filename = disposition
+            .params
+            .get("filename")
+            .or_else(|| part.ctype.params.get("name"))
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let Some(filename) = filename else { continue };
+        if !matches!(
+            disposition.disposition,
+            DispositionType::Attachment | DispositionType::Inline
+        ) {
+            continue;
+        }
+        attachments.push((filename, part.ctype.mimetype.clone(), part));
+    }
+
+    let (filename, mime_type, part) = attachments
+        .get(index)
+        .ok_or_else(|| "找不到该附件，请重新打开邮件后再试。".to_string())?;
+    let bytes = part
+        .get_body_raw()
+        .map_err(|error| format!("读取附件内容失败：{error}"))?;
+    Ok((filename.clone(), mime_type.clone(), bytes.to_vec()))
+}
+
+/// 极简 base64 编码（避免为预览引入新依赖）。
+fn base64_encode(input: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((triple >> 18) & 0x3f) as usize] as char);
+        out.push(TABLE[((triple >> 12) & 0x3f) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            TABLE[((triple >> 6) & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[(triple & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
 
 /// 把指定序号的附件写到本地临时目录，返回文件路径。
 ///

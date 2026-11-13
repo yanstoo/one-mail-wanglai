@@ -390,3 +390,31 @@ pub async fn messages_save_attachment(
 ) -> Result<String, String> {
     crate::mail::body::save_attachment(&state, message_id, index).await
 }
+
+#[tauri::command]
+pub async fn messages_attachment_payload(
+    state: State<'_, AppState>,
+    message_id: i64,
+    index: usize,
+) -> Result<serde_json::Value, String> {
+    crate::mail::body::attachment_payload(&state, message_id, index).await
+}
+
+#[tauri::command]
+pub async fn messages_save_attachment_as(
+    state: State<'_, AppState>,
+    message_id: i64,
+    index: usize,
+    target_path: String,
+) -> Result<String, String> {
+    crate::mail::body::save_attachment_as(&state, message_id, index, &target_path).await
+}
+
+#[tauri::command]
+pub async fn messages_download_attachment(
+    state: State<'_, AppState>,
+    message_id: i64,
+    index: usize,
+) -> Result<String, String> {
+    crate::mail::body::download_attachment(&state, message_id, index).await
+}

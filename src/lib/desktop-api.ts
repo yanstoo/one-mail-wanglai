@@ -69,6 +69,12 @@ export function createDesktopApi(): OneMailApi {
       loadBody: (messageId) => command('messages_load_body', { messageId }),
       saveAttachment: (messageId, index) =>
         command<string>('messages_save_attachment', { messageId, index }),
+      attachmentPayload: (messageId, index) =>
+        command('messages_attachment_payload', { messageId, index }),
+      saveAttachmentAs: (messageId, index, targetPath) =>
+        command<string>('messages_save_attachment_as', { messageId, index, targetPath }),
+      downloadAttachment: (messageId, index) =>
+        command<string>('messages_download_attachment', { messageId, index }),
       setReadState: (messageId, isRead) =>
         command('messages_set_read_state', { messageId, isRead }),
       setJunkOverride: (messageId, junk) =>
