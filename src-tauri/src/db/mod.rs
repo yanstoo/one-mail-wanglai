@@ -9,7 +9,7 @@ const SCHEMA_SQL: &str = include_str!("schema.sql");
 /// 数据库结构版本，写入 `PRAGMA user_version`。
 /// 1：往来联系人索引（三张表 + 首次全量回填）。
 /// 2：`mail_messages.junk_override`（单封邮件的垃圾归属覆盖）需要重算索引。
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 pub fn initialize(state: &AppState) -> Result<(), String> {
     let connection = open(state)?;
@@ -43,6 +43,11 @@ fn apply_migrations(connection: &Connection) -> Result<(), String> {
         return Ok(());
     }
     if version < 2 {
+        correspondents::rebuild_all(connection)?;
+    }
+    // v3：联系人排序改用「邮件到达时间」（received_at），老库里的 last_at 是
+    // 按发件时间算的，必须整体重建一次才能生效
+    if version < 3 {
         correspondents::rebuild_all(connection)?;
     }
     correspondents::set_schema_version(connection, SCHEMA_VERSION)

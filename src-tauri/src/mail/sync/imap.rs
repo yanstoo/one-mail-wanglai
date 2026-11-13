@@ -296,9 +296,9 @@ async fn sync_imap_folder(
                 message_id: headers.get_first_value("Message-ID"),
                 from_name,
                 from_email,
-                received_at: headers
-                    .get_first_value("Date")
-                    .or_else(|| internal_date.clone()),
+                // 到达时间优先用服务器 INTERNALDATE；Date 头是发件人本机时间，
+                // 经常被时区/时钟误差带偏，只作兜底
+                received_at: internal_date.clone().or_else(|| headers.get_first_value("Date")),
                 internal_date,
                 in_reply_to: headers.get_first_value("In-Reply-To"),
                 references_header: headers.get_first_value("References"),

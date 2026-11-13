@@ -185,13 +185,22 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
     setDetailLoading(true)
     setDetailError(null)
     const messageId = selectedMessage.messageId
-    Promise.resolve(window.api.messages.loadBody(messageId))
-      .catch(() => null)
-      .then(() => window.api.messages.get(messageId))
-      .then((loaded) => {
+    // 正文在 message_bodies 里，messages.get 只返回摘要；
+    // 之前把 loadBody 的结果丢掉了，所以右栏永远显示「正文尚未缓存」
+    void Promise.all([
+      window.api.messages.get(messageId),
+      window.api.messages.loadBody(messageId).catch(() => null)
+    ])
+      .then(([loaded, bodyResult]) => {
         if (cancelled) return
-        setDetail(loaded)
-        if (!loaded) setDetailError('未找到本地邮件记录。')
+        if (!loaded) {
+          setDetail(null)
+          setDetailError('未找到本地邮件记录。')
+          return
+        }
+        setDetail(bodyResult?.body ? { ...loaded, body: bodyResult.body } : loaded)
+        if (bodyResult?.error) setDetailError(bodyResult.error)
+        else setDetailError(null)
       })
       .catch((cause: unknown) => {
         if (!cancelled) setDetailError(cause instanceof Error ? cause.message : String(cause))
