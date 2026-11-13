@@ -9,7 +9,7 @@ const SCHEMA_SQL: &str = include_str!("schema.sql");
 /// 数据库结构版本，写入 `PRAGMA user_version`。
 /// 1：往来联系人索引（三张表 + 首次全量回填）。
 /// 2：`mail_messages.junk_override`（单封邮件的垃圾归属覆盖）需要重算索引。
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 pub fn initialize(state: &AppState) -> Result<(), String> {
     let connection = open(state)?;
@@ -50,7 +50,59 @@ fn apply_migrations(connection: &Connection) -> Result<(), String> {
     if version < 3 {
         correspondents::rebuild_all(connection)?;
     }
+    // v4：时间列历史上存的是 RFC 2822 原文（"Wed, 28 Oct 2026 ... (CST)"），
+    // 字符串排序等于按星期名字母序，必须归一化成 ISO-8601 再重建索引
+    if version < 4 {
+        normalize_timestamp_columns(connection)?;
+        correspondents::rebuild_all(connection)?;
+    }
     correspondents::set_schema_version(connection, SCHEMA_VERSION)
+}
+
+
+/// 把 mail_messages 里的时间列批量归一化为 ISO-8601（v4 迁移）。
+fn normalize_timestamp_columns(connection: &Connection) -> Result<(), String> {
+    let rows = {
+        let mut statement = connection
+            .prepare(
+                "SELECT message_id, received_at, internal_date, sent_at
+                 FROM onemail_mail_messages",
+            )
+            .map_err(|error| format!("读取邮件时间失败：{error}"))?;
+        let collected = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            })
+            .map_err(|error| format!("读取邮件时间失败：{error}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("读取邮件时间失败：{error}"))?;
+        collected
+    };
+
+    for (message_id, received_at, internal_date, sent_at) in rows {
+        let next_received = crate::mail::sync::normalize_timestamp(received_at.as_deref());
+        let next_internal = crate::mail::sync::normalize_timestamp(internal_date.as_deref());
+        let next_sent = crate::mail::sync::normalize_timestamp(sent_at.as_deref());
+        if next_received == received_at && next_internal == internal_date && next_sent == sent_at {
+            continue;
+        }
+        connection
+            .execute(
+                "UPDATE onemail_mail_messages
+                 SET received_at=COALESCE(?2,received_at),
+                     internal_date=COALESCE(?3,internal_date),
+                     sent_at=COALESCE(?4,sent_at)
+                 WHERE message_id=?1",
+                rusqlite::params![message_id, next_received, next_internal, next_sent],
+            )
+            .map_err(|error| format!("归一化邮件时间失败：{error}"))?;
+    }
+    Ok(())
 }
 
 fn recover_interrupted_syncs(connection: &Connection) -> Result<(), String> {

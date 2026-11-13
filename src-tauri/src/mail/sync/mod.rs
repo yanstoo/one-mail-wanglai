@@ -376,6 +376,44 @@ pub(crate) fn apply_messages(
     }))
 }
 
+
+/// 把 IMAP/Gmail/Graph 给出的各种时间写法归一成 ISO-8601 UTC（毫秒精度）。
+///
+/// IMAP 的 `Date` 头与 INTERNALDATE 是 RFC 2822 风格（可能带 `(CST)` 注释），
+/// 直接存进库会让 `ORDER BY last_at DESC` 退化成按星期名字母序排序 —— 必须归一化。
+pub(crate) fn normalize_timestamp(raw: Option<&str>) -> Option<String> {
+    let value = raw?.trim();
+    if value.is_empty() {
+        return None;
+    }
+    // 去掉结尾的时区注释，如 "(CST)"
+    let mut cleaned = value.to_string();
+    while let Some(start) = cleaned.find('(') {
+        match cleaned[start..].find(')') {
+            Some(end) => cleaned.replace_range(start..start + end + 1, ""),
+            None => break,
+        }
+    }
+    let cleaned = cleaned.trim();
+
+    let parsed = chrono::DateTime::parse_from_rfc2822(cleaned)
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(cleaned))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(cleaned, "%d-%b-%Y %H:%M:%S %z")
+            .map(|value| value.and_utc().fixed_offset()))
+        .or_else(|_| chrono::DateTime::parse_from_str(cleaned, "%d-%b-%Y %H:%M:%S %z"))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(cleaned, "%Y-%m-%d %H:%M:%S")
+            .map(|value| value.and_utc().fixed_offset()));
+
+    match parsed {
+        Ok(value) => Some(
+            value
+                .with_timezone(&chrono::Utc)
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        ),
+        Err(_) => None,
+    }
+}
+
 fn upsert_message(
     connection: &Connection,
     account_id: i64,
@@ -424,8 +462,8 @@ fn upsert_message(
                 message.subject,
                 message.from_name,
                 message.from_email,
-                message.received_at,
-                message.internal_date,
+                normalize_timestamp(message.received_at.as_deref()),
+                normalize_timestamp(message.internal_date.as_deref()),
                 message.snippet,
                 i64::from(message.size_bytes),
                 message.is_read,

@@ -241,26 +241,68 @@ pub async fn fetch_raw_message(
         .select(folder_path)
         .await
         .map_err(|error| format!("打开邮箱文件夹失败：{error}"))?;
-    let mut stream = session
-        .uid_fetch(uid.to_string(), "BODY.PEEK[]")
-        .await
-        .map_err(|error| format!("读取邮件正文失败：{error}"))?;
-    let mut body = None;
-    while let Some(fetch) = stream
-        .try_next()
-        .await
-        .map_err(|error| format!("读取邮件正文失败：{error}"))?
-    {
-        if let Some(value) = fetch.body() {
-            body = Some(value.to_vec());
+    // 不同服务器对 BODY.PEEK[] 的支持程度不同（部分国内服务商只给 RFC822 或 TEXT），
+    // 依次尝试，取第一个拿到的完整内容
+    let mut body: Option<Vec<u8>> = None;
+    let mut attempts: Vec<String> = Vec::new();
+    for spec in ["BODY.PEEK[]", "RFC822.PEEK"] {
+        let mut stream = match session.uid_fetch(uid.to_string(), spec).await {
+            Ok(stream) => stream,
+            Err(error) => {
+                attempts.push(format!("{spec}: {error}"));
+                continue;
+            }
+        };
+        while let Some(fetch) = stream.try_next().await.map_err(|error| format!("读取邮件正文失败：{error}"))? {
+            if let Some(value) = fetch.body() {
+                body = Some(value.to_vec());
+                break;
+            }
+            if fetch.header().is_none() && fetch.body().is_none() {
+                attempts.push(format!("{spec}: 服务器返回空内容"));
+            }
+        }
+        drop(stream);
+        if body.is_some() {
+            break;
         }
     }
-    drop(stream);
+
+    // 最后兜底：只要正文文本（无头），用合成头包一层让解析器能识别编码
+    if body.is_none() {
+        let mut stream = session
+            .uid_fetch(uid.to_string(), "BODY.PEEK[TEXT]")
+            .await
+            .map_err(|error| format!("读取邮件正文失败：{error}"))?;
+        while let Some(fetch) = stream
+            .try_next()
+            .await
+            .map_err(|error| format!("读取邮件正文失败：{error}"))?
+        {
+            if let Some(value) = fetch.body() {
+                let mut wrapped = b"Content-Type: text/plain; charset=utf-8\r\n\r\n".to_vec();
+                wrapped.extend_from_slice(value);
+                body = Some(wrapped);
+                break;
+            }
+        }
+        drop(stream);
+        if body.is_none() {
+            attempts.push("BODY.PEEK[TEXT]: 服务器返回空内容".to_string());
+        }
+    }
+
     session
         .logout()
         .await
-        .map_err(|error| format!("关闭 IMAP 连接失败：{error}"))?;
-    body.ok_or_else(|| "IMAP 返回中没有邮件正文。".to_string())
+        .ok();
+
+    body.ok_or_else(|| {
+        format!(
+            "IMAP 没有返回邮件正文（uid={uid}，文件夹 {folder_path}）：{}",
+            attempts.join("; ")
+        )
+    })
 }
 
 async fn connect_client(
