@@ -9,7 +9,7 @@ const SCHEMA_SQL: &str = include_str!("schema.sql");
 /// 数据库结构版本，写入 `PRAGMA user_version`。
 /// 1：往来联系人索引（三张表 + 首次全量回填）。
 /// 2：`mail_messages.junk_override`（单封邮件的垃圾归属覆盖）需要重算索引。
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 pub fn initialize(state: &AppState) -> Result<(), String> {
     let connection = open(state)?;
@@ -54,6 +54,20 @@ fn apply_migrations(connection: &Connection) -> Result<(), String> {
     // 字符串排序等于按星期名字母序，必须归一化成 ISO-8601 再重建索引
     if version < 4 {
         normalize_timestamp_columns(connection)?;
+        correspondents::rebuild_all(connection)?;
+    }
+    // v5：索引里残留了服务器上已删除的邮件（远端 remote_deleted=1），
+    // 点开时后端查不到行会报「邮件不存在」；清掉这些链接并重建
+    if version < 5 {
+        connection
+            .execute(
+                "DELETE FROM onemail_correspondent_messages
+                 WHERE source='mail' AND message_id IN (
+                   SELECT message_id FROM onemail_mail_messages WHERE remote_deleted=1
+                 )",
+                [],
+            )
+            .map_err(|error| format!("清理已删除邮件的索引失败：{error}"))?;
         correspondents::rebuild_all(connection)?;
     }
     correspondents::set_schema_version(connection, SCHEMA_VERSION)

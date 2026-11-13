@@ -115,7 +115,17 @@ pub async fn messages_set_read_state(
     message_id: i64,
     is_read: bool,
 ) -> Result<Value, String> {
-    let update = set_read_state(&state, message_id, is_read).await?;
+    let update = match set_read_state(&state, message_id, is_read).await {
+        Ok(value) => value,
+        Err(error) => {
+            // 记到客户端日志，方便排查「标记已读失败」这类只在界面上弹一下的错误
+            let _ = crate::client_log::write(
+                &app,
+                &format!("WARN Mark read failed message_id={message_id} is_read={is_read}: {error}"),
+            );
+            return Err(error);
+        }
+    };
     emit_read_state_change(&app, &update);
     Ok(update)
 }
@@ -132,7 +142,7 @@ async fn set_read_state(
              FROM onemail_mail_messages m
              JOIN onemail_mail_folders f ON f.folder_id=m.folder_id
              LEFT JOIN onemail_folder_sync_states s ON s.folder_id=m.folder_id
-             WHERE m.message_id=?1 AND m.remote_deleted=0",
+             WHERE m.message_id=?1",
             [message_id],
             |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?,
                 row.get::<_, i64>(3)?, row.get::<_, Option<String>>(4)?, row.get::<_, Option<String>>(5)?)),
@@ -159,6 +169,25 @@ async fn set_read_state(
     }
 
     // 普通 IMAP：尽力把 \Seen 写到服务器；失败只降级为「仅本地」，不回滚本地状态
+    let remote_deleted: bool = {
+        let connection = db::open(state)?;
+        connection
+            .query_row(
+                "SELECT remote_deleted FROM onemail_mail_messages WHERE message_id=?1",
+                [message_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|value| value != 0)
+            .unwrap_or(false)
+    };
+    if remote_deleted {
+        // 服务器上已删除的邮件只做本地标记，避免无谓的远端调用
+        return Ok(json!({
+            "messageId": message_id, "accountId": target.0, "folderId": target.1,
+            "isRead": is_read, "remoteSynced": false
+        }));
+    }
+
     match remote_set_seen(state, &target, message_id, is_read).await {
         Ok(()) => {
             persist_read_state(state, message_id, target.0, target.1, is_read, true)?;

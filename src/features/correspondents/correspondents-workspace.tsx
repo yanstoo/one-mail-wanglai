@@ -191,7 +191,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
       window.api.messages.get(messageId),
       window.api.messages
         .loadBody(messageId)
-        .catch((cause: unknown) => ({ body: null, error: cause instanceof Error ? cause.message : String(cause) }))
+        .catch((cause: unknown) => ({ body: null, error: typeof cause === 'string' ? cause : String(cause) }))
     ])
       .then(([loaded, bodyResult]) => {
         if (cancelled) return
@@ -230,7 +230,8 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
         void queryClient.invalidateQueries({ queryKey: ['correspondent-thread'] })
       })
       .catch((cause: unknown) => {
-        toast.error(cause instanceof Error ? cause.message : '标记已读失败')
+        // Tauri 的 invoke 失败传递的是字符串，不是 Error，直接 instanceof 会吞掉真实原因
+        toast.error(typeof cause === 'string' && cause.trim() ? cause : '标记已读失败')
       })
   }, [queryClient, selectedMessage])
 

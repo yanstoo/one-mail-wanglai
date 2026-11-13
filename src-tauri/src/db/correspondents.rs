@@ -620,6 +620,7 @@ fn ingest_mail(
          JOIN onemail_mail_folders f ON f.folder_id = m.folder_id
          JOIN onemail_message_addresses a ON a.message_id = m.message_id
          WHERE m.is_draft = 0 AND m.user_deleted = 0 AND m.is_deleted = 0
+           AND m.remote_deleted = 0
            AND f.role NOT IN ('trash','drafts')
            AND a.kind IN ({PARTICIPANT_KINDS})
            AND (?1 IS NULL OR m.account_id = ?1)
