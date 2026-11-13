@@ -231,6 +231,10 @@ pub fn accounts_update(state: State<'_, AppState>, input: Value) -> Result<Value
     let sync_enabled = optional_bool(object, "syncEnabled")
         .or_else(|| optional_bool(current_object, "syncEnabled"))
         .unwrap_or(true);
+    let badge_label = optional_string(object, "badgeLabel")
+        .or_else(|| optional_string(current_object, "badgeLabel"));
+    let badge_color = optional_string(object, "badgeColor")
+        .or_else(|| optional_string(current_object, "badgeColor"));
 
     connection
         .execute(
@@ -238,7 +242,7 @@ pub fn accounts_update(state: State<'_, AppState>, input: Value) -> Result<Value
                provider_key=?2, display_name=?3, account_label=?4, auth_type=?5,
                imap_host=?6, imap_port=?7, imap_security=?8,
                smtp_host=?9, smtp_port=?10, smtp_security=?11, smtp_auth_type=?12,
-               smtp_enabled=?13, sync_enabled=?14,
+               smtp_enabled=?13, sync_enabled=?14, badge_label=?15, badge_color=?16,
                updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
              WHERE account_id=?1",
             params![
@@ -255,7 +259,9 @@ pub fn accounts_update(state: State<'_, AppState>, input: Value) -> Result<Value
                 smtp_security,
                 smtp_auth_type,
                 smtp_enabled,
-                sync_enabled
+                sync_enabled,
+                badge_label,
+                badge_color
             ],
         )
         .map_err(database_error)?;
@@ -337,7 +343,7 @@ fn list_accounts(connection: &Connection) -> Result<Vec<Value>, String> {
         .prepare(
             "SELECT account_id,provider_key,email,display_name,account_label,auth_type,
                     imap_host,imap_port,imap_security,smtp_host,smtp_port,smtp_security,
-                    smtp_auth_type,smtp_enabled,sync_enabled,
+                    smtp_auth_type,smtp_enabled,sync_enabled,badge_label,badge_color,
                     CASE WHEN encrypted_password IS NOT NULL THEN 'stored'
                          WHEN auth_type='oauth2' AND EXISTS (
                            SELECT 1 FROM onemail_oauth_tokens t
@@ -360,7 +366,7 @@ fn get_account(connection: &Connection, account_id: i64) -> Result<Option<Value>
         .query_row(
             "SELECT account_id,provider_key,email,display_name,account_label,auth_type,
                     imap_host,imap_port,imap_security,smtp_host,smtp_port,smtp_security,
-                    smtp_auth_type,smtp_enabled,sync_enabled,
+                    smtp_auth_type,smtp_enabled,sync_enabled,badge_label,badge_color,
                     CASE WHEN encrypted_password IS NOT NULL THEN 'stored'
                          WHEN auth_type='oauth2' AND EXISTS (
                            SELECT 1 FROM onemail_oauth_tokens t
@@ -392,11 +398,13 @@ fn map_account(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "smtpAuthType": row.get::<_, Option<String>>(12)?,
         "smtpEnabled": row.get::<_, i64>(13)? != 0,
         "syncEnabled": row.get::<_, i64>(14)? != 0,
-        "credentialState": row.get::<_, String>(15)?,
-        "status": row.get::<_, String>(16)?,
-        "connectionStatus": row.get::<_, String>(17)?,
-        "lastSyncAt": row.get::<_, Option<String>>(18)?,
-        "lastError": row.get::<_, Option<String>>(19)?
+        "credentialState": row.get::<_, String>(17)?,
+        "badgeLabel": row.get::<_, Option<String>>(15)?,
+        "badgeColor": row.get::<_, Option<String>>(16)?,
+        "status": row.get::<_, String>(18)?,
+        "connectionStatus": row.get::<_, String>(19)?,
+        "lastSyncAt": row.get::<_, Option<String>>(20)?,
+        "lastError": row.get::<_, Option<String>>(21)?
     }))
 }
 

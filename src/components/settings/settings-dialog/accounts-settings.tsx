@@ -1,8 +1,9 @@
 import * as React from 'react'
-import { Plus, Trash2, UserRound } from 'lucide-react'
+import { Check, Plus, Trash2, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@renderer/components/ui/button'
+import { Input } from '@renderer/components/ui/input'
 import type { MailAccount } from '@renderer/shared/types'
 import { SettingsGroup, SETTINGS_LIST_CLASS } from './settings-ui'
 
@@ -15,6 +16,10 @@ export function AccountsSettings(): React.JSX.Element {
   const [accounts, setAccounts] = React.useState<MailAccount[]>([])
   const [loading, setLoading] = React.useState(true)
   const [busyId, setBusyId] = React.useState<number | null>(null)
+  const [editingId, setEditingId] = React.useState<number | null>(null)
+  const [draftLabel, setDraftLabel] = React.useState('')
+  const [draftBadge, setDraftBadge] = React.useState('')
+  const [draftColor, setDraftColor] = React.useState('#2d70d2')
 
   const reload = React.useCallback(async () => {
     try {
@@ -41,6 +46,32 @@ export function AccountsSettings(): React.JSX.Element {
       toast.success(account.syncEnabled ? '已暂停该账号的同步' : '已恢复同步')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '更新失败')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  function beginEdit(account: MailAccount): void {
+    setEditingId(account.accountId)
+    setDraftLabel(account.accountLabel ?? '')
+    setDraftBadge(account.badgeLabel ?? '')
+    setDraftColor(account.badgeColor ?? '#2d70d2')
+  }
+
+  async function saveEdit(account: MailAccount): Promise<void> {
+    setBusyId(account.accountId)
+    try {
+      await window.api.accounts.update({
+        accountId: account.accountId,
+        accountLabel: draftLabel.trim() || undefined,
+        badgeLabel: draftBadge.trim().slice(0, 2) || null,
+        badgeColor: draftColor
+      })
+      await reload()
+      setEditingId(null)
+      toast.success('账号信息已保存')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '保存失败')
     } finally {
       setBusyId(null)
     }
@@ -85,6 +116,27 @@ export function AccountsSettings(): React.JSX.Element {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
+                  <span
+                    className="rounded-[4px] px-1 text-[9px] font-bold leading-4 text-white"
+                    style={{ backgroundColor: account.badgeColor ?? '#2d70d2' }}
+                    title={account.badgeColor ?? ''}
+                  >
+                    {account.badgeLabel || '—'}
+                  </span>
+                  {editingId === account.accountId ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busyId === account.accountId}
+                      onClick={() => void saveEdit(account)}
+                    >
+                      <Check className="size-3.5" aria-hidden="true" />
+                    </Button>
+                  ) : (
+                    <Button type="button" size="sm" variant="ghost" onClick={() => beginEdit(account)}>
+                      编辑
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     size="sm"
@@ -105,6 +157,41 @@ export function AccountsSettings(): React.JSX.Element {
                     <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
+                {editingId === account.accountId ? (
+                  <div className="mt-2 w-full space-y-2 rounded-lg border border-border bg-background/60 p-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[11px]">
+                        备注名
+                        <Input
+                          value={draftLabel}
+                          onChange={(event) => setDraftLabel(event.target.value)}
+                          placeholder="例如：工作邮箱"
+                          className="mt-1 h-7 text-[11.5px]"
+                        />
+                      </label>
+                      <label className="text-[11px]">
+                        短徽标（≤2 字）
+                        <Input
+                          value={draftBadge}
+                          maxLength={2}
+                          onChange={(event) => setDraftBadge(event.target.value)}
+                          placeholder="G / QQ"
+                          className="mt-1 h-7 text-[11.5px]"
+                        />
+                      </label>
+                    </div>
+                    <label className="flex items-center gap-2 text-[11px]">
+                      徽标颜色
+                      <input
+                        type="color"
+                        value={draftColor}
+                        onChange={(event) => setDraftColor(event.target.value)}
+                        className="h-6 w-10 cursor-pointer rounded border border-border bg-transparent"
+                      />
+                      <span className="font-mono text-[10.5px] text-muted-foreground">{draftColor}</span>
+                    </label>
+                  </div>
+                ) : null}
               </div>
             ))
           )}

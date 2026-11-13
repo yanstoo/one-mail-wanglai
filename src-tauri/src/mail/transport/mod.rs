@@ -231,7 +231,8 @@ pub async fn fetch_raw_message(
     account: &MailAccount,
     folder_path: &str,
     uid: u32,
-) -> Result<Vec<u8>, String> {
+    message_id: Option<&str>,
+) -> Result<(Vec<u8>, Option<u32>), String> {
     if uid == 0 {
         return Err("邮件 UID 无效。".to_string());
     }
@@ -297,7 +298,42 @@ pub async fn fetch_raw_message(
         .await
         .ok();
 
-    body.ok_or_else(|| {
+    // UID 可能失效：服务器改了 UIDVALIDITY，或这封邮件被服务端规则移动到别的文件夹。
+    // 用 RFC822 Message-ID 在同一个文件夹里重新定位一次。
+    let mut resolved_uid = None;
+    if body.is_none() {
+        if let Some(message_id) = message_id.map(str::trim).filter(|value| !value.is_empty()) {
+            let search = session
+                .uid_search(format!("HEADER Message-ID {message_id}"))
+                .await
+                .map_err(|error| format!("按 Message-ID 查找邮件失败：{error}"))?;
+            if let Some(found) = search.iter().copied().next() {
+                let mut stream = session
+                    .uid_fetch(found.to_string(), "BODY.PEEK[]")
+                    .await
+                    .map_err(|error| format!("读取邮件正文失败：{error}"))?;
+                while let Some(fetch) = stream
+                    .try_next()
+                    .await
+                    .map_err(|error| format!("读取邮件正文失败：{error}"))?
+                {
+                    if let Some(value) = fetch.body() {
+                        body = Some(value.to_vec());
+                        resolved_uid = Some(found);
+                        break;
+                    }
+                }
+                drop(stream);
+                if body.is_none() {
+                    attempts.push(format!("按 Message-ID 命中 uid={found} 但正文为空"));
+                }
+            } else {
+                attempts.push("按 Message-ID 未在该文件夹找到该邮件（可能已被移动或删除）".to_string());
+            }
+        }
+    }
+
+    body.map(|value| (value, resolved_uid)).ok_or_else(|| {
         format!(
             "IMAP 没有返回邮件正文（uid={uid}，文件夹 {folder_path}）：{}",
             attempts.join("; ")

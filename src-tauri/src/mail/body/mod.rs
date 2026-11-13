@@ -51,33 +51,70 @@ pub async fn load_message_body(state: &AppState, message_id: i64) -> Result<Valu
         .ok_or_else(|| format!("邮件不存在：{message_id}"))?;
     set_body_status(state, message_id, "loading", None)?;
 
-    let result = async {
-        let raw_message = mail_transport::fetch_raw_message(
+    let result: Result<(), String> = async {
+        let (raw_message, resolved_uid) = mail_transport::fetch_raw_message(
             state,
             &locator.account,
             &locator.folder_path,
             locator.uid,
+            locator.rfc822_message_id.as_deref(),
         )
         .await?;
         let parsed = parse_message(&raw_message)?;
-        persist_message_body(state, message_id, locator.account.account_id, parsed)
+        persist_message_body(state, message_id, locator.account.account_id, parsed)?;
+        // UID 发生过漂移时把新 UID 写回，下次直接命中
+        if let Some(uid) = resolved_uid {
+            if uid != locator.uid {
+                let connection = db::open(state)?;
+                connection
+                    .execute(
+                        "UPDATE onemail_mail_messages SET uid=?2 WHERE message_id=?1",
+                        rusqlite::params![message_id, i64::from(uid)],
+                    )
+                    .map_err(|error| format!("更新邮件 UID 失败：{error}"))?;
+            }
+        }
+        Ok(())
     }
     .await;
 
-    if let Err(error) = &result {
-        let _ = set_body_status(state, message_id, "error", Some(error));
+    match result {
+        Ok(()) => {
+            let connection = db::open(state)?;
+            let body = connection
+                .query_row(
+                    "SELECT body_text,body_html_sanitized,external_images_blocked
+                     FROM onemail_message_bodies WHERE message_id=?1",
+                    [message_id],
+                    |row| {
+                        Ok(json!({
+                            "messageId": message_id,
+                            "bodyText": row.get::<_, Option<String>>(0)?,
+                            "bodyHtmlSanitized": row.get::<_, Option<String>>(1)?,
+                            "externalImagesBlocked": row.get::<_, i64>(2)? != 0
+                        }))
+                    },
+                )
+                .optional()
+                .map_err(|error| format!("读取邮件正文失败：{error}"))?;
+            Ok(body.unwrap_or_else(|| json!(null)))
+        }
+        Err(error) => {
+            let _ = set_body_status(state, message_id, "error", Some(&error));
+            Err(error)
+        }
     }
-    result
 }
 
 pub async fn repair_message_metadata(state: &AppState, message_id: i64) -> Result<(), String> {
     let locator = get_message_locator(state, message_id)?
         .ok_or_else(|| format!("邮件不存在：{message_id}"))?;
-    let raw_message = mail_transport::fetch_raw_message(
+    let (raw_message, _resolved_uid) = mail_transport::fetch_raw_message(
         state,
         &locator.account,
         &locator.folder_path,
         locator.uid,
+        locator.rfc822_message_id.as_deref(),
     )
     .await?;
     let parsed = parse_message(&raw_message)?;
@@ -88,6 +125,8 @@ struct MessageLocator {
     account: MailAccount,
     folder_path: String,
     uid: u32,
+    /// RFC822 Message-ID：UID 漂移时用它重新定位
+    rfc822_message_id: Option<String>,
 }
 
 fn get_message_locator(
@@ -97,24 +136,25 @@ fn get_message_locator(
     let connection = db::open(state)?;
     connection
         .query_row(
-            "SELECT f.path,m.uid,m.account_id
+            "SELECT f.path,m.uid,m.account_id,m.rfc822_message_id
              FROM onemail_mail_messages m
              JOIN onemail_mail_folders f ON f.folder_id=m.folder_id
              WHERE m.message_id=?1",
             [message_id],
             |row| {
                 let uid = row.get::<_, i64>(1)?;
-                Ok((row.get::<_, String>(0)?, uid, row.get::<_, i64>(2)?))
+                Ok((row.get::<_, String>(0)?, uid, row.get::<_, i64>(2)?, row.get::<_, Option<String>>(3)?))
             },
         )
         .optional()
         .map_err(|error| format!("读取邮件定位信息失败：{error}"))?
-        .map(|(folder_path, uid, account_id)| {
+        .map(|(folder_path, uid, account_id, rfc822_message_id)| {
             let account = mail_transport::load_account(state, account_id)?;
             Ok(MessageLocator {
                 account,
                 folder_path,
                 uid: u32::try_from(uid).map_err(|_| "邮件 UID 无效。".to_string())?,
+                rfc822_message_id,
             })
         })
         .transpose()

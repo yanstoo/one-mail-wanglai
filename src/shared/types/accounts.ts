@@ -42,6 +42,9 @@ export type MailAccount = {
   email: string
   displayName?: string
   accountLabel?: string
+  /** 左栏徽标文字（≤2 字）与颜色 */
+  badgeLabel?: string | null
+  badgeColor?: string | null
   authType: AuthType
   imapHost: string
   imapPort: number
@@ -87,4 +90,6 @@ export type AccountUpdateInput = Partial<Omit<AccountCreateInput, 'email' | 'pas
   displayName?: string
   password?: string
   syncEnabled?: boolean
+  badgeLabel?: string | null
+  badgeColor?: string | null
 }
