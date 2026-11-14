@@ -10,7 +10,9 @@
  * 做法：解包控制文件 → 把 Depends 重写成去重且带备选的列表 → 重新打包。
  *
  * 用法：node scripts/patch-deb-depends.mjs [deb 路径]
- *   不传路径时自动找 src-tauri/target/release/bundle/deb/*.deb
+ *   不传路径时在 src-tauri/target 下递归查找最新的 *.deb。
+ *   带 `--target <triple>` 构建时产物在
+ *   src-tauri/target/<triple>/release/bundle/deb/，而不是 target/release/...
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -26,16 +28,28 @@ const WANTED = [
   'libgtk-3-0t64 | libgtk-3-0'
 ]
 
+function collectDebs(dir, depth = 0) {
+  if (depth > 6 || !existsSync(dir)) return []
+  const found = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) found.push(...collectDebs(full, depth + 1))
+    else if (entry.name.endsWith('.deb')) found.push(full)
+  }
+  return found
+}
+
 function findDeb() {
-  const dir = join('src-tauri', 'target', 'release', 'bundle', 'deb')
-  if (!existsSync(dir)) throw new Error(`未找到 deb 目录：${dir}（先跑 pnpm tauri build --bundles deb）`)
-  const files = readdirSync(dir).filter((name) => name.endsWith('.deb'))
-  if (files.length === 0) throw new Error(`${dir} 下没有 .deb`)
+  const root = join('src-tauri', 'target')
+  const files = collectDebs(root)
+  if (files.length === 0) {
+    throw new Error(`未找到任何 deb 产物（${root} 下为空）：先跑 pnpm tauri build --bundles deb`)
+  }
   // 必须按修改时间取最新：版本号是 YY.MMDD.HHMM，字符串排序会挑到旧包
   const newest = files
-    .map((name) => ({ name, mtime: statSync(join(dir, name)).mtimeMs }))
+    .map((path) => ({ path, mtime: statSync(path).mtimeMs }))
     .sort((left, right) => right.mtime - left.mtime)[0]
-  return join(dir, newest.name)
+  return newest.path
 }
 
 function run(command, args) {
