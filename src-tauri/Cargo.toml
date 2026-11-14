@@ -1,5 +1,5 @@
 [package]
-name = "onemail"
+name = "one-mail-wanglai"
 version = "0.1.0"
 description = "Local-first mail client organized by correspondent (unofficial OneMail fork)"
 authors = ["yanstoo <yanstoo@users.noreply.github.com>"]
