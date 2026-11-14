@@ -599,6 +599,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
           ) : (
             <CorrespondentMessageReader
               message={selectedMessage}
+              contactAddress={thread?.correspondent.address}
               detail={detail}
               outbox={outboxDetail}
               loading={detailLoading}

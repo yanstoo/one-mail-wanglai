@@ -418,3 +418,12 @@ pub async fn messages_download_attachment(
 ) -> Result<String, String> {
     crate::mail::body::download_attachment(&state, message_id, index).await
 }
+
+#[tauri::command]
+pub async fn messages_refresh_attachments(
+    state: State<'_, AppState>,
+    message_id: i64,
+) -> Result<Vec<serde_json::Value>, String> {
+    crate::mail::body::refresh_attachments(&state, message_id).await
+}
+

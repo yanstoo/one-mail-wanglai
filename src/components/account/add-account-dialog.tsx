@@ -265,12 +265,23 @@ function optionalText(value?: string): string | undefined {
 }
 
 function formatAccountSubmitError(error: unknown, fallback: string, kind: AccountKind): string {
-  if (!(error instanceof Error)) return fallback
+  // Tauri 的 invoke 失败传递的是字符串而不是 Error，之前用 instanceof 判断
+  // 会一律落到兜底文案，用户只看到"保存失败"而不知道是密码错还是地址错。
+  const raw =
+    typeof error === 'string'
+      ? error
+      : error instanceof Error
+        ? error.message
+        : typeof (error as { message?: unknown })?.message === 'string'
+          ? String((error as { message: string }).message)
+          : ''
 
-  const message = error.message
+  const message = raw
     .replace(/^Error invoking remote method '[^']+':\s*/i, '')
     .replace(/^Error:\s*/i, '')
     .trim()
+
+  if (!message) return fallback
 
   if (kind === 'aliyunEnterprise' && /IMAP 登录认证失败：.*LOGIN failed/i.test(message)) {
     return [
@@ -281,5 +292,29 @@ function formatAccountSubmitError(error: unknown, fallback: string, kind: Accoun
     ].join(' ')
   }
 
+  // 把常见的协议错误翻成人能看懂的原因
+  if (/AUTHENTICATIONFAILED|LOGIN failed|invalid credentials|auth(?:entication)? failed|认证失败|用户名或密码/i.test(message)) {
+    return `账号或密码不正确：服务器拒绝登录（${message}）。如果邮箱开启了「客户端专用密码 / 授权码」，请填写授权码而不是网页登录密码。`
+  }
+  if (/No such user|User not found|unknown user|mailbox does not exist|用户不存在|账号不存在/i.test(message)) {
+    return `邮箱账号不存在或未开通：${message}`
+  }
+  if (/Name or service not known|failed to lookup|nodename nor servname|DNS|解析失败|No address associated/i.test(message)) {
+    return `邮箱服务器地址无法解析，请检查 IMAP 服务器地址是否填错：${message}`
+  }
+  if (/Connection refused|Connection reset|拒绝连接|不可达/i.test(message)) {
+    return `连接被服务器拒绝，请检查端口与加密方式（SSL 一般是 993）：${message}`
+  }
+  if (/timed out|timeout|超时/i.test(message)) {
+    return `连接超时，请检查网络、服务器地址与端口：${message}`
+  }
+  if (/certificate|SSL|TLS|handshake/i.test(message)) {
+    return `加密握手失败，通常是加密方式选错（SSL/TLS 与 STARTTLS 不能混用）：${message}`
+  }
+  if (/IMAP 服务|not enabled|未开启|disabled/i.test(message)) {
+    return `服务器未开放 IMAP 服务，请先在邮箱网页端开启：${message}`
+  }
+
   return message
 }
+

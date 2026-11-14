@@ -260,6 +260,90 @@ fn download_dir() -> PathBuf {
     PathBuf::from(home).join("Downloads")
 }
 
+
+/// 只重新解析并落库附件元数据（不动正文）。
+///
+/// 用于老邮件：正文在早期版本里解析过但没有附件记录，
+/// 列表就永远是空的；这里强制再取一次原始邮件补齐。
+pub async fn refresh_attachments(
+    state: &AppState,
+    message_id: i64,
+) -> Result<Vec<Value>, String> {
+    let locator = get_message_locator(state, message_id)?
+        .ok_or_else(|| format!("邮件不存在：{message_id}"))?;
+    let (raw_message, _) = mail_transport::fetch_raw_message(
+        state,
+        &locator.account,
+        &locator.folder_path,
+        locator.uid,
+        locator.rfc822_message_id.as_deref(),
+    )
+    .await?;
+    let parsed = parse_mail(&raw_message).map_err(|error| format!("解析邮件失败：{error}"))?;
+
+    let mut leaves = Vec::new();
+    collect_leaf_parts(&parsed, &mut leaves);
+    let connection = db::open(state)?;
+    connection
+        .execute(
+            "DELETE FROM onemail_message_attachments WHERE message_id=?1",
+            [message_id],
+        )
+        .map_err(|error| format!("更新附件信息失败：{error}"))?;
+
+    let mut result = Vec::new();
+    let mut index = 0usize;
+    for part in &leaves {
+        let disposition = part.get_content_disposition();
+        let filename = disposition
+            .params
+            .get("filename")
+            .or_else(|| part.ctype.params.get("name"))
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let Some(filename) = filename else { continue };
+        if !matches!(
+            disposition.disposition,
+            DispositionType::Attachment | DispositionType::Inline
+        ) {
+            continue;
+        }
+        let size_bytes = part.get_body_raw().map(|value| value.len()).unwrap_or(0) as i64;
+        connection
+            .execute(
+                "INSERT INTO onemail_message_attachments
+                   (message_id,filename,mime_type,content_disposition,size_bytes)
+                 VALUES (?1,?2,?3,?4,?5)",
+                rusqlite::params![
+                    message_id,
+                    filename,
+                    part.ctype.mimetype,
+                    match disposition.disposition {
+                        DispositionType::Inline => "inline",
+                        _ => "attachment",
+                    },
+                    size_bytes
+                ],
+            )
+            .map_err(|error| format!("保存附件信息失败：{error}"))?;
+        result.push(json!({
+            "index": index,
+            "filename": filename,
+            "mimeType": part.ctype.mimetype,
+            "sizeBytes": size_bytes
+        }));
+        index += 1;
+    }
+
+    connection
+        .execute(
+            "UPDATE onemail_mail_messages SET has_attachments=?2 WHERE message_id=?1",
+            rusqlite::params![message_id, i64::from(!result.is_empty())],
+        )
+        .map_err(|error| format!("更新附件标记失败：{error}"))?;
+    Ok(result)
+}
+
 /// 读出附件字节（预览用）。仅用于小文件，调用方需自带大小上限。
 pub async fn attachment_payload(
     state: &AppState,

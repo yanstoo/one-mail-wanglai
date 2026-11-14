@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { CornerUpLeft, CornerUpRight, Forward, Languages, Mail, ShieldAlert, Trash2 } from 'lucide-react'
+import { CornerUpLeft, CornerUpRight, Forward, Info, Languages, Mail, ShieldAlert, Trash2 } from 'lucide-react'
 
 import { formatAbsoluteTime } from '@renderer/components/mail/date-format'
 import { toast } from 'sonner'
@@ -14,6 +14,7 @@ import { bodyKey, splitParagraphs, useParagraphTranslation, useTranslation } fro
  */
 export function CorrespondentMessageReader({
   message,
+  contactAddress,
   detail,
   outbox,
   loading,
@@ -25,6 +26,8 @@ export function CorrespondentMessageReader({
   onToggleJunk
 }: {
   message: CorrespondentThreadMessage | null
+  /** 当前左栏选中的联系人地址，用来解释「这封邮件为什么在这个人下面」 */
+  contactAddress?: string
   detail: MailMessageDetail | null
   /** 记录来自发件箱时，直接渲染这封已发邮件的完整内容 */
   outbox: OutboxMessage | null
@@ -86,7 +89,24 @@ export function CorrespondentMessageReader({
     }))
     setAttachments(list)
     setPreview(null)
-  }, [detail])
+
+    // 邮件标记为有附件但本地没有附件记录（老数据/早期解析失败）：
+    // 按需重新解析一次，避免「明明有附件却看不到」
+    const hasFlag = Boolean(detail?.hasAttachments)
+    const messageId = message?.source === 'mail' ? message.messageId : null
+    if (!hasFlag || list.length > 0 || !messageId) return
+    let cancelled = false
+    void window.api.messages
+      .refreshAttachments(messageId)
+      .then((items) => {
+        if (cancelled || items.length === 0) return
+        setAttachments(items)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [detail, message])
 
   function busyKey(action: string, index: number): string {
     return `${action}:${index}`
@@ -132,6 +152,20 @@ export function CorrespondentMessageReader({
       setAttachmentBusy(null)
     }
   }
+  // 解释这封邮件为什么挂在这个联系人下面：联系人可能只是收件人或抄送人
+  const contactHint = React.useMemo(() => {
+    const target = (contactAddress ?? '').trim().toLowerCase()
+    if (!target) return null
+    const fromText = (from ?? '').toLowerCase()
+    if (fromText.includes(target)) return null
+    const toText = (toLine ?? '').toLowerCase()
+    const ccText = (ccLine ?? '').toLowerCase()
+    const isCc = ccText.includes(target)
+    const isTo = !isCc && toText.includes(target)
+    if (!isTo && !isCc) return null
+    return `这个人在本邮件中出现在「${isCc ? '抄送' : '收件人'}」栏，所以算作往来联系人；发件人是 ${from || '（未知）'}。`
+  }, [contactAddress, from, toLine, ccLine])
+
   const translationKey = bodyKey(message.messageId)
   const translatedBody = translation.translationOf(translationKey)
   const translating = translation.pendingKey === translationKey
@@ -217,13 +251,31 @@ export function CorrespondentMessageReader({
           </p>
         ) : null}
 
-        <div className="mt-3 flex items-start justify-between gap-4 border-b border-border pb-3 text-[11px]">
-          <div className="min-w-0">
-            <p className="truncate font-semibold">{from || '—'}</p>
-            <p className="truncate text-muted-foreground">{toLine ? `收件人 ${toLine}` : ''}</p>
-            {ccLine ? <p className="truncate text-muted-foreground">抄送 {ccLine}</p> : null}
+        <div className="mt-3 border-b border-border pb-3 text-[11px]">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 space-y-1.5">
+              <p className="break-words font-semibold leading-5">{from || '—'}</p>
+              {toLine ? (
+                <p className="break-words leading-5 text-muted-foreground">
+                  <span className="mr-1 text-foreground/60">收件人</span>
+                  {toLine}
+                </p>
+              ) : null}
+              {ccLine ? (
+                <p className="break-words leading-5 text-muted-foreground">
+                  <span className="mr-1 text-foreground/60">抄送</span>
+                  {ccLine}
+                </p>
+              ) : null}
+            </div>
+            <span className="shrink-0 text-muted-foreground">{formatAbsoluteTime(outbox?.sentAt ?? message.sentAt)}</span>
           </div>
-          <span className="shrink-0 text-muted-foreground">{formatAbsoluteTime(outbox?.sentAt ?? message.sentAt)}</span>
+          {contactHint ? (
+            <p className="mt-2 inline-flex items-start gap-1 rounded-md bg-primary/8 px-2 py-1 text-[10.5px] leading-4 text-primary">
+              <Info className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+              {contactHint}
+            </p>
+          ) : null}
         </div>
 
         {message.isJunk ? (

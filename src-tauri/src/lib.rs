@@ -157,6 +157,7 @@ pub fn run() {
             data::messages::messages_set_read_state,
             data::messages::messages_save_attachment,
             data::messages::messages_attachment_payload,
+            data::messages::messages_refresh_attachments,
             data::messages::messages_download_attachment,
             data::messages::messages_save_attachment_as,
             data::messages::messages_set_junk_override,

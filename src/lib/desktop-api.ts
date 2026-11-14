@@ -75,6 +75,8 @@ export function createDesktopApi(): OneMailApi {
         command<string>('messages_save_attachment_as', { messageId, index, targetPath }),
       downloadAttachment: (messageId, index) =>
         command<string>('messages_download_attachment', { messageId, index }),
+      refreshAttachments: (messageId) =>
+        command('messages_refresh_attachments', { messageId }),
       setReadState: (messageId, isRead) =>
         command('messages_set_read_state', { messageId, isRead }),
       setJunkOverride: (messageId, junk) =>
