@@ -20,6 +20,8 @@
 
 OneMail is a local-first desktop mail client built with Tauri 2, Rust, React, and TypeScript. Mail sync, sending, OAuth, SQLite access, and the optional AI assistant run in Rust, while the interface uses React and Vite.
 
+![Interface preview](docs/screenshot.png)
+
 **Language**: [中文](./README.md) | English
 
 **Upstream website / downloads**: [https://zhihui-hu.github.io/one-mail/](https://zhihui-hu.github.io/one-mail/) (upstream, not this fork)
@@ -55,7 +57,7 @@ OneMail is a local-first desktop mail client built with Tauri 2, Rust, React, an
 - 🪟 **Custom title bar**: borderless on Linux/Windows with controls at the top right in minimize → maximize → close order; double-clicking the bar toggles maximise. macOS keeps the native traffic lights.
 - ⚙️ **Settings**: an in-window modal (not a separate window) with general, **account management**, AI, translation, backup and about sections.
 - 🔐 **Encrypted credentials**: AES-256-GCM with the key stored in the app data directory.
-- 📦 **Linux deb**: package `one-mail-wanglai`, binary `onemail-wanglai`; installs side by side with upstream `one-mail` without file conflicts.
+- 📦 **Linux deb**: package `one-mail-wanglai`, binary `one-mail-wanglai`; installs side by side with upstream `one-mail` without file conflicts.
 
 ## Interface
 

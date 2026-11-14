@@ -3,7 +3,7 @@
 ## 来源
 
 - 上游：[zhihui-hu/one-mail](https://github.com/zhihui-hu/one-mail)（Copyright (C) Huzhihui）
-- 本分支：**OneMail 往来**（仓库 `yanstoo/one-mail`），以 AGPL-3.0-only 发布
+- 本分支：**OneMail 往来**（仓库 `yanstoo/one-mail-wanglai`），以 AGPL-3.0-only 发布
 - 定位：把上游「按文件夹/账号分组的收件箱」改成**按往来联系人组织的三栏视图**
 
 ## 一、界面与交互差异
@@ -49,7 +49,7 @@
 ## 五、打包差异
 
 - `productName` 必须是 ASCII：`OneMail Wanglai`（中文会被 `dpkg` 拒收）
-- 二进制 `onemail-wanglai`、identifier `com.huzhihui.onemail.wanglai`（开发态 `.wanglai.dev`）
+- 二进制 `one-mail-wanglai`、identifier `com.huzhihui.onemail.wanglai`（开发态 `.wanglai.dev`）
 - 与上游 `one-mail` 并存安装、零文件冲突、数据目录互不影响
 - Ubuntu 24.04+ 的 GTK 依赖改名 `libgtk-3-0t64`，由 `scripts/patch-deb-depends.mjs` 在打包后修补控制文件
 

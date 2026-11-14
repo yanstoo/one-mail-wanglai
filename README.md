@@ -11,14 +11,18 @@
   <img src="https://img.shields.io/badge/pnpm-10.34-F69220?logo=pnpm&logoColor=white" alt="pnpm 10.34" />
 </p>
 
+> **项目名：`one-mail-wanglai`** ｜ 界面名：OneMail 往来
+>
 > **本仓库是 OneMail 的非官方分支（unofficial fork）**
 >
 > - 上游项目：[zhihui-hu/one-mail](https://github.com/zhihui-hu/one-mail)（Copyright (C) Huzhihui）
-> - 本分支：OneMail 往来 —— 把「按邮箱分组的收件箱」改成「按来往联系人归并的往来时间线」，差异见 [FORK.md](./FORK.md)
+> - 本分支：`one-mail-wanglai`（界面名 OneMail 往来）—— 把「按邮箱分组的收件箱」改成「按来往联系人归并的往来时间线」，差异见 [FORK.md](./FORK.md)
 > - 授权：[AGPL-3.0-only](./LICENSE)（与上游一致），版权与修改声明见 [NOTICE](./NOTICE)
 > - 本分支为个人维护，问题请在本仓库反馈，不要打扰上游作者
 
 OneMail 是一个本地优先的桌面邮件客户端，使用 Tauri 2、Rust、React 和 TypeScript 构建。邮件同步、发送、OAuth、SQLite 数据访问和可选 AI 助手由 Rust 端提供，界面使用 React + Vite。
+
+![界面预览：往来三栏](docs/screenshot.png)
 
 **语言**：中文 | [English](./README.en.md)
 
@@ -55,7 +59,7 @@ OneMail 是一个本地优先的桌面邮件客户端，使用 Tauri 2、Rust、
 - 🪟 **自绘标题栏**：Linux/Windows 无系统装饰，窗口按钮在右上角，顺序为 最小化 → 最大化 → 关闭；双击标题栏空白处切换最大化。macOS 保留原生交通灯。
 - ⚙️ **设置**：主窗口内的模态弹窗（不是独立窗口），含通用、**账号管理**（备注名/短徽标/颜色/暂停同步/移除）、AI、翻译、备份、关于。
 - 🔐 **本地凭据加密**：密码/授权码/OAuth token 用 AES-256-GCM 加密后存本地库，密钥在应用数据目录的 `.env`。
-- 📦 **Linux deb**：包名 `one-mail-wanglai`，二进制 `onemail-wanglai`，与上游 `one-mail` 可并存安装、数据互不干扰。
+- 📦 **Linux deb**：包名 `one-mail-wanglai`，二进制 `one-mail-wanglai`，与上游 `one-mail` 可并存安装、数据互不干扰。
 
 ## 🖥️ 界面概览
 
@@ -262,3 +266,18 @@ pnpm build                                            # 前端构建
 ---
 
 **注意**：Gmail 与 Outlook 优先使用系统浏览器 OAuth；其他服务商通常需要先启用 IMAP/SMTP，并按要求使用应用专用密码、授权码或客户端专用密码。
+
+---
+
+## 📌 关于本项目
+
+**one-mail-wanglai** 是桌面邮件客户端 [OneMail](https://github.com/zhihui-hu/one-mail) 的非官方分支，
+把「按文件夹/账号分组的收件箱」重做成**按往来联系人组织的三栏视图**：左栏一个人一行（按最近邮件到达时间排序），
+中栏是该人的聊天式往来，右栏是邮件正文与附件。
+
+- 往来口径：收到的邮件看发件人；自己发出的邮件看收件人 / 抄送 / 密送
+- 普通 / 垃圾两个分组；垃圾文件夹默认同步
+- 正文在同步后预取（最近 30 天、≤5 MB），打开不再依赖服务器文件夹状态
+- 附件可内嵌预览（图片）、下载到本地；翻译按段落对照显示
+- Linux 打 `deb`；macOS / Windows 由 GitHub Actions 自动构建
+- 授权：AGPL-3.0-only；与上游 `one-mail` 可并存安装、数据互不干扰
