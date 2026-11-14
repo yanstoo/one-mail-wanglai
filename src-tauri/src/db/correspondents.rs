@@ -19,8 +19,13 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension, ToSql};
 use serde_json::{json, Value};
 
 
-/// 参与往来聚合的地址类型。`bcc` 只在自家发出的邮件上展开（见 `ingest_outbox`）。
-const PARTICIPANT_KINDS: &str = "'from','to','cc'";
+/// 收到的邮件只按发件人算往来人。
+///
+/// 口径（用户裁定）：往来 = 「发给我的（含抄送）+ 我发出去的」。
+/// 所以收件邮件只取 `from`；`to`/`cc` 只在我自己发出的邮件上展开
+/// （见 `ingest_outbox`）。之前把收件邮件的共同收件人也算进来，
+/// 会让「别人群发、我恰好在收件人里」的地址变成往来人。
+const PARTICIPANT_KINDS: &str = "'from'";
 
 pub const GROUP_NORMAL: &str = "normal";
 pub const GROUP_JUNK: &str = "junk";
@@ -622,7 +627,13 @@ fn ingest_mail(
          WHERE m.is_draft = 0 AND m.user_deleted = 0 AND m.is_deleted = 0
            AND m.remote_deleted = 0
            AND f.role NOT IN ('trash','drafts')
-           AND a.kind IN ({PARTICIPANT_KINDS})
+           AND (
+             -- 收到的邮件：往来人 = 发件人
+             (f.role <> 'sent' AND a.kind = 'from')
+             OR
+             -- 自己发出的邮件（Sent 文件夹）：往来人 = 收件人/抄送/密送
+             (f.role = 'sent' AND a.kind IN ('to','cc','bcc'))
+           )
            AND (?1 IS NULL OR m.account_id = ?1)
          ORDER BY m.message_id"
     );

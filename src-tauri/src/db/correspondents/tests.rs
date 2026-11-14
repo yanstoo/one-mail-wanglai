@@ -93,7 +93,7 @@ fn find(items: &Value, address: &str) -> Value {
 }
 
 #[test]
-fn cc_recipients_create_correspondence_and_self_is_excluded() {
+fn incoming_mail_only_uses_sender_and_self_is_excluded() {
     let connection = setup();
     let message_id = insert_message(&connection, 1, 1, 1, "项目排期", "2026-11-01T09:00:00.000Z", 1);
     add_address(&connection, message_id, "from", "alice@corp.test", "Alice");
@@ -108,11 +108,38 @@ fn cc_recipients_create_correspondence_and_self_is_excluded() {
     assert_eq!(alice["inboundCount"], 1);
     assert_eq!(alice["unreadCount"], 0);
 
-    // 抄送也算往来
-    let bob = find(&items, "bob@corp.test");
-    assert_eq!(bob["inboundCount"], 1);
+    // 口径裁定：收件邮件的共同收件人/抄送人不算往来人
+    assert!(
+        items["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["address"] != "bob@corp.test"),
+        "收件邮件的抄送人不应该成为往来联系人"
+    );
 
     // 自有地址不进联系人列表
+    assert!(!items["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["address"] == "me@a.test"));
+}
+
+#[test]
+fn sent_folder_recipients_create_correspondence() {
+    let connection = setup();
+    // 服务器同步来的 Sent 文件夹：from 是我，收件人 carol 才是往来人
+    // 种子数据里 folder 3 就是该账号的 Sent（role=sent）
+    let message_id = insert_message(&connection, 1, 3, 5, "报价单", "2026-11-02T09:00:00.000Z", 1);
+    add_address(&connection, message_id, "from", "me@a.test", "我");
+    add_address(&connection, message_id, "to", "carol@shop.test", "Carol");
+
+    rebuild_all(&connection).expect("rebuild index");
+    let items = list(&connection, GROUP_NORMAL, None, None, 50, None).expect("list normal");
+
+    let carol = find(&items, "carol@shop.test");
+    assert_eq!(carol["outboundCount"], 1);
     assert!(!items["items"]
         .as_array()
         .unwrap()

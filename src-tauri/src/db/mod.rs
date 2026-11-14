@@ -9,7 +9,7 @@ const SCHEMA_SQL: &str = include_str!("schema.sql");
 /// 数据库结构版本，写入 `PRAGMA user_version`。
 /// 1：往来联系人索引（三张表 + 首次全量回填）。
 /// 2：`mail_messages.junk_override`（单封邮件的垃圾归属覆盖）需要重算索引。
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 pub fn initialize(state: &AppState) -> Result<(), String> {
     let connection = open(state)?;
@@ -58,6 +58,11 @@ fn apply_migrations(connection: &Connection) -> Result<(), String> {
     }
     // v5：索引里残留了服务器上已删除的邮件（远端 remote_deleted=1），
     // 点开时后端查不到行会报「邮件不存在」；清掉这些链接并重建
+    // v6：往来人口径修正——收件邮件只看发件人（之前把共同收件人也算了进来），
+    // 自己发出的邮件看收件人/抄送。必须整体重建，否则旧联系人不消失。
+    if version < 6 {
+        correspondents::rebuild_all(connection)?;
+    }
     if version < 5 {
         connection
             .execute(
