@@ -79,6 +79,11 @@ try {
   rmSync(debPath)
   run('dpkg-deb', ['--root-owner-group', '-b', workDir, debPath])
 
+  // 供 CI 使用：把最终路径写到指定文件，避免调用方再猜目录结构
+  if (process.env.DEB_PATH_OUT) {
+    writeFileSync(process.env.DEB_PATH_OUT, debPath)
+  }
+
   console.log(`已修补 ${debPath}`)
   console.log(`  旧 Depends: ${previous}`)
   console.log(`  新 Depends: ${run('dpkg-deb', ['-f', debPath, 'Depends']).trim()}`)

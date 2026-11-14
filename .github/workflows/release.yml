@@ -259,7 +259,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          node scripts/patch-deb-depends.mjs
-          deb=$(ls -t src-tauri/target/release/bundle/deb/*.deb | head -n1)
-          echo "patching: $deb"
+          set -euxo pipefail
+          # --target 构建时产物在 target/<triple>/release/bundle/deb/，
+          # 由脚本递归查找并把最终路径写出来，调用方不要再猜目录
+          DEB_PATH_OUT="$RUNNER_TEMP/deb-path.txt" node scripts/patch-deb-depends.mjs
+          deb=$(cat "$RUNNER_TEMP/deb-path.txt")
+          test -f "$deb"
+          echo "uploading: $deb"
           gh release upload "${RELEASE_TAG}" "$deb" --clobber
