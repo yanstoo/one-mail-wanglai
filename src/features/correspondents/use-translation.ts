@@ -60,3 +60,77 @@ export function subjectKey(source: string, messageId: number): string {
 export function bodyKey(messageId: number): string {
   return `body:mail:${messageId}`
 }
+
+/** 段落切分：按空行分段，保留段内换行。用于「原文 + 译文」逐段对照。 */
+export function splitParagraphs(text: string): string[] {
+  return text
+    .replace(/\r\n/g, '\n')
+    .split(/\n{2,}/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+}
+
+/**
+ * 逐段翻译：每段单独请求并缓存（key = 邮件 id + 段序号）。
+ * 并发 3 个，段数上限 40，避免一封长邮件打出上百个请求。
+ */
+export function useParagraphTranslation(): {
+  translateParagraphs: (messageId: number, paragraphs: string[]) => Promise<void>
+  paragraphsOf: (messageId: number) => string[] | undefined
+  pending: boolean
+  clear: (messageId: number) => void
+} {
+  const [pending, setPending] = React.useState(false)
+  const [, bump] = React.useReducer((value: number) => value + 1, 0)
+
+  const translateParagraphs = React.useCallback(
+    async (messageId: number, paragraphs: string[]) => {
+      const limited = paragraphs.slice(0, 40)
+      setPending(true)
+      try {
+        for (let index = 0; index < limited.length; index += 3) {
+          const batch = limited.slice(index, index + 3)
+          const results = await Promise.all(
+            batch.map(async (text, offset) => {
+              const key = `para:${messageId}:${index + offset}`
+              if (cache.has(key)) return cache.get(key) ?? ''
+              try {
+                const result = await window.api.translate.text({ text })
+                const value = result.text.trim()
+                cache.set(key, value)
+                return value
+              } catch {
+                return ''
+              }
+            })
+          )
+          // 单段失败不影响其它段
+          results.forEach((value, offset) => {
+            if (value) cache.set(`para:${messageId}:${index + offset}`, value)
+          })
+        }
+        bump()
+      } finally {
+        setPending(false)
+      }
+    },
+    []
+  )
+
+  const paragraphsOf = React.useCallback((messageId: number) => {
+    const values: string[] = []
+    for (let index = 0; index < 40; index += 1) {
+      const value = cache.get(`para:${messageId}:${index}`)
+      if (value === undefined) break
+      values.push(value)
+    }
+    return values.length > 0 ? values : undefined
+  }, [])
+
+  const clear = React.useCallback((messageId: number) => {
+    for (let index = 0; index < 40; index += 1) cache.delete(`para:${messageId}:${index}`)
+    bump()
+  }, [])
+
+  return { translateParagraphs, paragraphsOf, pending, clear }
+}

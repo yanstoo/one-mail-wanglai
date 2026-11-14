@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 
 import { cn } from '@renderer/lib/utils'
 import type { CorrespondentThreadMessage, MailMessageDetail, OutboxMessage } from '@renderer/shared/types'
-import { bodyKey, useTranslation } from './use-translation'
+import { bodyKey, splitParagraphs, useParagraphTranslation, useTranslation } from './use-translation'
 
 /**
  * 右栏正文（阶段 2 轻量版）：先用 messages.get + loadBody 渲染，
@@ -61,6 +61,10 @@ export function CorrespondentMessageReader({
   const bodyHtml = isOutbox ? (outbox?.bodyHtml ?? '') : (detail?.body?.bodyHtmlSanitized ?? '')
 
   const translation = useTranslation()
+  const paragraphTranslation = useParagraphTranslation()
+  const paragraphs = React.useMemo(() => (bodyText ? splitParagraphs(bodyText) : []), [bodyText])
+  const paragraphsNeeded = paragraphs.length > 0 && paragraphs.length <= 40
+  const translatedParagraphs = message ? paragraphTranslation.paragraphsOf(message.messageId) : undefined
   const [attachmentBusy, setAttachmentBusy] = React.useState<string | null>(null)
   const [attachments, setAttachments] = React.useState<
     { index: number; filename: string; mimeType: string; sizeBytes: number }[]
@@ -151,16 +155,32 @@ export function CorrespondentMessageReader({
         </button>
         <button
           type="button"
-          onClick={() => void translation.translate(translationKey, bodyText)}
-          disabled={!bodyText || translating}
-          title={translatedBody ? '收起译文' : '翻译正文'}
+          onClick={() => {
+            if (!message) return
+            if (translatedParagraphs) {
+              paragraphTranslation.clear(message.messageId)
+            } else if (paragraphsNeeded) {
+              void paragraphTranslation.translateParagraphs(message.messageId, paragraphs)
+            } else {
+              void translation.translate(translationKey, bodyText)
+            }
+          }}
+          disabled={!bodyText || translating || paragraphTranslation.pending}
+          title={translatedParagraphs ? '收起译文' : '翻译正文'}
           className={cn(
             'flex items-center gap-1 disabled:opacity-40',
             translatedBody ? 'font-semibold text-primary' : 'text-muted-foreground hover:text-foreground'
           )}
         >
-          <Languages className={cn('size-3.5', translating && 'animate-pulse')} aria-hidden="true" />
-          {translating ? '翻译中…' : translatedBody ? '收起译文' : '翻译'}
+          <Languages
+            className={cn('size-3.5', (translating || paragraphTranslation.pending) && 'animate-pulse')}
+            aria-hidden="true"
+          />
+          {translating || paragraphTranslation.pending
+            ? '翻译中…'
+            : translatedParagraphs || translatedBody
+              ? '收起译文'
+              : '翻译'}
         </button>
         <button
           type="button"
@@ -217,13 +237,27 @@ export function CorrespondentMessageReader({
 
         {!loading && !error ? (
           <>
-            {translatedBody ? (
+            {translatedParagraphs ? (
+              // 沉浸式风格：每段原文下面紧跟该段译文
+              <div className="mt-4 space-y-3 text-[12.5px] leading-relaxed">
+                {paragraphs.map((paragraph, index) => (
+                  <div key={index}>
+                    <p className="whitespace-pre-wrap break-words">{paragraph}</p>
+                    {translatedParagraphs[index] ? (
+                      <p className="mt-1 whitespace-pre-wrap break-words border-l-2 border-primary/40 pl-2 text-[12.5px] text-primary/90">
+                        {translatedParagraphs[index]}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : translatedBody ? (
               <div className="mt-4 mb-3 rounded-lg border border-primary/25 bg-primary/5 p-3 text-[13px] leading-relaxed whitespace-pre-wrap">
                 <p className="mb-1 text-[10.5px] font-semibold text-primary">译文</p>
                 {translatedBody}
               </div>
             ) : null}
-            {bodyHtml ? (
+            {translatedParagraphs ? null : bodyHtml ? (
             // 后端已完成净化（body_html_sanitized），远程图片默认被阻止
             <div
               className="mt-4 text-[12.5px] leading-relaxed [&_a]:text-primary [&_img]:max-w-full"

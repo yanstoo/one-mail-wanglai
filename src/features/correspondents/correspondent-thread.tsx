@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Paperclip, Plus, Reply } from 'lucide-react'
+import { Paperclip, PenLine, Plus } from 'lucide-react'
 
 import { ContextMenu, useContextMenu } from '@renderer/components/context-menu'
 import { formatRelativeTime } from '@renderer/components/mail/date-format'
@@ -154,7 +154,8 @@ export function CorrespondentThread({
   selectedKey,
   onSelectMessage,
   onReplyTo,
-  onReply
+  onReply,
+  onCompose
 }: {
   thread: CorrespondentThreadResult | undefined
   loading: boolean
@@ -162,6 +163,7 @@ export function CorrespondentThread({
   onSelectMessage: (message: CorrespondentThreadMessage) => void
   /** 右键某一封气泡时的「回复」：以该封为引用对象 */
   onReplyTo: (message: CorrespondentThreadMessage) => void
+  onCompose: () => void
   onReply: () => void
 }): React.JSX.Element {
   const grouped = React.useMemo(() => groupThreadByDay(thread?.messages ?? []), [thread])
@@ -207,11 +209,11 @@ export function CorrespondentThread({
       <footer className="shrink-0 border-t border-border bg-[var(--native-toolbar)] p-2">
         <button
           type="button"
-          onClick={onReply}
+          onClick={onCompose}
           className="flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-primary py-2.5 text-[12.5px] font-semibold text-primary-foreground hover:opacity-90"
         >
-          <Reply className="size-3.5" aria-hidden="true" />
-          回复 {thread.correspondent.displayName?.trim() || thread.correspondent.address}
+          <PenLine className="size-3.5" aria-hidden="true" />
+          写邮件给 {thread.correspondent.displayName?.trim() || thread.correspondent.address}
         </button>
       </footer>
     </section>

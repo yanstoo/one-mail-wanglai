@@ -746,3 +746,19 @@ mod tests {
         );
     }
 }
+
+/// 校验 IMAP 能否登录（添加账号前用）。
+///
+/// 只做一次登录 + 登出，不落库、不同步；失败把服务器原话带回去，
+/// 让用户在添加阶段就能看到「授权码错误 / 端口不通」这类真实原因。
+pub async fn verify_imap_login(
+    config: &ImapConnectionConfig,
+    password: &str,
+) -> Result<(), String> {
+    let mut session = tokio::time::timeout(DISCOVER_TIMEOUT, connect_with_password(config, password))
+        .await
+        .map_err(|_| "连接 IMAP 服务器超时，请检查地址与端口。".to_string())?
+        .map_err(|error| format!("登录失败：{error}"))?;
+    let _ = session.logout().await;
+    Ok(())
+}

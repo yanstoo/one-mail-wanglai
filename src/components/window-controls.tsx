@@ -41,6 +41,29 @@ export function WindowControls(): React.JSX.Element | null {
 
   return (
     <div className="app-no-drag flex shrink-0 items-center gap-2" aria-label="窗口控制">
+      {/* Linux / Windows 约定：最小化 → 最大化 → 关闭（关闭在最右） */}
+      <button
+        type="button"
+        aria-label="最小化"
+        title="最小化"
+        onClick={() => run(() => win.minimize())}
+        className="group flex size-3 items-center justify-center rounded-full bg-[#febc2e] hover:brightness-95"
+      >
+        <span className="text-[7px] font-bold leading-none text-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+          −
+        </span>
+      </button>
+      <button
+        type="button"
+        aria-label={maximized ? '还原' : '最大化'}
+        title={maximized ? '还原' : '最大化'}
+        onClick={() => run(() => (maximized ? win.unmaximize() : win.maximize()))}
+        className="group flex size-3 items-center justify-center rounded-full bg-[#28c840] hover:brightness-95"
+      >
+        <span className="text-[7px] font-bold leading-none text-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+          +
+        </span>
+      </button>
       <button
         type="button"
         aria-label="关闭"
@@ -50,28 +73,6 @@ export function WindowControls(): React.JSX.Element | null {
       >
         <span className="text-[7px] font-bold leading-none text-black/50 opacity-0 transition-opacity group-hover:opacity-100">
           ×
-        </span>
-      </button>
-      <button
-        type="button"
-        aria-label="最小化"
-        title="最小化"
-        onClick={() => run(() => win.minimize())}
-        className="group flex size-3 items-center justify-center rounded-full bg-[#febc2e] hover:brightness-95"
-      >
-        <span className="text-[8px] font-bold leading-none text-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-          −
-        </span>
-      </button>
-      <button
-        type="button"
-        aria-label={maximized ? '还原' : '最大化'}
-        title={maximized ? '还原' : '最大化'}
-        onClick={() => run(() => win.toggleMaximize())}
-        className="group flex size-3 items-center justify-center rounded-full bg-[#28c840] hover:brightness-95"
-      >
-        <span className="text-[7px] font-bold leading-none text-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-          {maximized ? '❐' : '+'}
         </span>
       </button>
     </div>

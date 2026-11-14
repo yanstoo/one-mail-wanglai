@@ -107,6 +107,15 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
   const [accountId, setAccountId] = React.useState<number | null>(null)
   const [selectedId, setSelectedId] = React.useState<number | null>(null)
   const [selectedMessage, setSelectedMessage] = React.useState<CorrespondentThreadMessage | null>(null)
+
+  // 切换联系人时必须清空右栏：否则会继续显示上一个联系人的邮件，
+  // 出现「左栏是 A，右栏正文却是 B 的邮件」的串台现象
+  React.useEffect(() => {
+    setSelectedMessage(null)
+    setDetail(null)
+    setOutboxDetail(null)
+    setDetailError(null)
+  }, [selectedId])
   const [detail, setDetail] = React.useState<MailMessageDetail | null>(null)
   const [outboxDetail, setOutboxDetail] = React.useState<OutboxMessage | null>(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
@@ -565,6 +574,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
             onSelectMessage={setSelectedMessage}
             onReplyTo={(message) => void startCompose('reply', message)}
             onReply={() => void startCompose(replyTarget ? 'reply' : 'new', replyTarget)}
+            onCompose={() => void startCompose('new', null)}
           />
 
           {composeOpen ? (

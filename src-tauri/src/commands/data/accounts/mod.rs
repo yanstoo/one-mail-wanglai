@@ -94,6 +94,27 @@ pub async fn accounts_create(
     let smtp_enabled = optional_bool(object, "smtpEnabled").unwrap_or(true);
     let sync_folders = parse_sync_folders(object)?;
 
+    // 先验证再入库：之前不验证就直接插库并提示"添加成功"，
+    // 服务器连不上时用户以为加好了，实际一封邮件都同步不下来。
+    if auth_type != "oauth2" {
+        let config = crate::mail::transport::ImapConnectionConfig {
+            email: email.clone(),
+            imap_host: imap_host.clone(),
+            imap_port: u16::try_from(imap_port).map_err(|_| "IMAP 端口无效。".to_string())?,
+            imap_security: imap_security.clone(),
+        };
+        let password_value = password.clone().unwrap_or_default();
+        crate::mail::transport::verify_imap_login(&config, &password_value)
+            .await
+            .map_err(|error| {
+                let _ = crate::client_log::write(
+                    &app,
+                    &format!("WARN Account verify failed for {normalized_email}: {error}"),
+                );
+                format!("账号验证失败，未添加：{error}")
+            })?;
+    }
+
     let connection = db::open(&state)?;
     connection
         .execute(
