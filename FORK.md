@@ -26,7 +26,7 @@
 - `onemail_correspondent_accounts`：联系人 × 我的账号（徽标来源）
 - `onemail_correspondent_messages`：联系人 × 邮件（`source` 区分 `mail` / `outbox` 两套 id 空间）
 
-口径（用户裁定，v6 迁移后固定）：
+往来口径：
 
 - **收到的邮件** → 往来人取 `from`
 - **我发出的邮件**（Sent 文件夹 / 发件箱）→ 往来人取 `to` / `cc` / `bcc`

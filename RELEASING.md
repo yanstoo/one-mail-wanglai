@@ -65,7 +65,6 @@ gh workflow run release.yml -f tag=v26.1110.2308
 - [ ] tag 格式为 `v<数字>.<数字>.<数字>`（`release.yml` 里的正则是 `^v\d+\.\d+\.\d+$`）
 - [ ] `git status` 干净，没有把 `.devhome/`、`.appdata/` 等本地缓存目录提交进去（已在 `.gitignore`）
 - [ ] Release 说明里的 AGPL 与非官方分支声明仍在（`prepare` 作业里生成）
-- [ ] 若本次带了数据库结构变更：确认 `db/mod.rs` 的 `SCHEMA_VERSION` 已递增，老用户升级会走 `apply_migrations`
 - [ ] 构建后抽查 deb 元数据：`dpkg-deb -f <包>.deb Package` 必须输出 ASCII 包名，`dpkg-deb -I <包>.deb` 的
       `Maintainer` / `Description` 应是本分支信息
 
@@ -113,23 +112,3 @@ apt-get install -s ./<包>.deb       # 模拟安装，能解析依赖即通过�
    `.onemail` 备份（备份元数据只校验 `format_version`，不校验分支）。
 
 ---
-
-## 七、数据库迁移
-
-**升 `SCHEMA_VERSION` 的时机**（`src-tauri/src/db/mod.rs`）：
-
-- 改变索引生成逻辑（`ingest_mail` / `ingest_outbox` / `refresh_aggregates`）
-- 修改时间字段格式或排序键
-- 需要清理历史脏数据（例如已不再展示的邮件链接）
-
-迁移写法：在 `apply_migrations` 里按版本号追加分支，用 `if version < N { … }`，最后统一 `set_schema_version`。涉及排序/聚合的改动记得紧跟 `correspondents::rebuild_all(connection)?`。
-
-**当前迁移历史**：
-
-| 版本 | 内容 |
-| --- | --- |
-| v2 | 往来索引表初始结构 |
-| v3 | 排序改用邮件到达时间 |
-| v4 | 时间列归一化为 ISO-8601 并重建 |
-| v5 | 清理指向服务器已删除邮件的索引链接 |
-| v6 | 往来口径修正（收到的取发件人、发出的取收件人），整体重建 |
