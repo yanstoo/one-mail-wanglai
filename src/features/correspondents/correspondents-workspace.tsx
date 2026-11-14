@@ -453,7 +453,13 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
       <header
         onMouseDown={handleTitlebarMouseDown}
         onDoubleClick={handleTitlebarDoubleClick}
-        className="app-titlebar app-drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border pl-4 pr-3"
+        className={cn(
+          'app-titlebar app-drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border pr-3',
+          // macOS 用 Overlay 标题栏，左上角是系统交通灯，需要留出位置
+          typeof document !== 'undefined' && document.documentElement.dataset.platform === 'macos'
+            ? 'pl-[78px]'
+            : 'pl-4'
+        )}
       >
         <div className="flex w-[220px] shrink-0 items-center gap-2.5">
           <span className="text-[13px] font-semibold">OneMail 往来</span>

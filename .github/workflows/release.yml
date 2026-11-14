@@ -1,5 +1,6 @@
 name: Release
 
+# 打 tag（v26.1114.1235 这种 YY.MMDD.HHMM 版本）即自动构建并发布 Linux deb。
 on:
   push:
     tags:
@@ -7,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag to build (for example, v26.85.2357)
+        description: 已存在的版本标签（例如 v26.1114.1235）
         required: true
         type: string
 
@@ -24,7 +25,7 @@ env:
 
 jobs:
   prepare:
-    name: Prepare release
+    name: 准备 Release
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions:
@@ -32,9 +33,9 @@ jobs:
     outputs:
       release_id: ${{ steps.release.outputs.result }}
     steps:
-      - name: Create or reuse release
+      - name: 创建或复用 Release
         id: release
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ env.RELEASE_TAG }}
         with:
@@ -42,7 +43,7 @@ jobs:
             const tag = process.env.RELEASE_TAG
 
             if (!/^v\d+\.\d+\.\d+$/.test(tag)) {
-              throw new Error(`Invalid release tag: ${tag}`)
+              throw new Error(`版本标签格式不对：${tag}（应形如 v26.1114.1235）`)
             }
 
             try {
@@ -53,7 +54,7 @@ jobs:
               })
             } catch (error) {
               if (error.status === 404) {
-                throw new Error(`Release tag does not exist: ${tag}`)
+                throw new Error(`标签不存在：${tag}`)
               }
               throw error
             }
@@ -66,15 +67,14 @@ jobs:
               })
 
               if (release.draft) {
-                const { data: publishedRelease } = await github.rest.repos.updateRelease({
+                const { data: published } = await github.rest.repos.updateRelease({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   release_id: release.id,
                   draft: false,
                   prerelease: false,
                 })
-
-                return publishedRelease.id
+                return published.id
               }
 
               return release.id
@@ -90,15 +90,20 @@ jobs:
               tag_name: tag,
               name: `OneMail 往来 ${tag}`,
               body: [
-                '下载对应系统与架构的安装包。',
+                '| 平台 | 文件 |',
+                '| --- | --- |',
+                '| Linux x64 | `.deb` |',
+                '| macOS（Apple Silicon / Intel） | `.dmg` |',
+                '| Windows x64 | `.exe`（NSIS） |',
                 '',
-                'Download the installer for your operating system and architecture.',
+                'Linux：`sudo apt install ./OneMail*.deb`',
+                '',
+                '未签名说明：macOS 首次打开请右键 →「打开」；Windows 若出现 SmartScreen 提示，',
+                '点「更多信息 → 仍要运行」。',
                 '',
                 '---',
-                '本分支是 [OneMail](https://github.com/zhihui-hu/one-mail) 的非官方分支（unofficial fork），',
+                '本分支是 [OneMail](https://github.com/zhihui-hu/one-mail) 的非官方分支，',
                 '以 AGPL-3.0-only 分发；对应源码即本仓库该 tag 的代码。',
-                'This is an unofficial fork of OneMail, distributed under AGPL-3.0-only.',
-                'Corresponding source: this repository at the same tag.',
               ].join('\n'),
               draft: false,
               prerelease: false,
@@ -108,39 +113,34 @@ jobs:
             return release.id
 
   test:
-    name: Tests before release
+    name: 发布前测试
     needs: prepare
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
-      - name: Checkout release tag
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
           persist-credentials: false
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.34.1
           run_install: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
 
-      - name: Install Linux dependencies
+      - name: 安装 Linux 依赖
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -153,19 +153,19 @@ jobs:
             patchelf \
             xdg-utils
 
-      - name: Install frontend dependencies
+      - name: 前端依赖
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck and unit tests
+      - name: 类型检查与单测
         run: |
           pnpm typecheck
           pnpm test
 
-      - name: Rust tests
+      - name: Rust 测试
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
   build:
-    name: Build ${{ matrix.name }}
+    name: 构建 ${{ matrix.name }}
     needs: [prepare, test]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -175,56 +175,49 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: macOS arm64 DMG
+          - name: Linux x64 deb
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb
+          - name: macOS Apple Silicon dmg
             os: macos-15
             target: aarch64-apple-darwin
             bundles: dmg
-            apple_signing_identity: '-'
-          - name: macOS x64 DMG
+          - name: macOS Intel dmg
             os: macos-15-intel
             target: x86_64-apple-darwin
             bundles: dmg
-            apple_signing_identity: '-'
-          - name: Windows x64 NSIS
+          - name: Windows x64 nsis
             os: windows-latest
             target: x86_64-pc-windows-msvc
             bundles: nsis
-          - name: Linux x64 AppImage and DEB
-            os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bundles: appimage,deb
-
     steps:
-      - name: Checkout release tag
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
           persist-credentials: false
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.34.1
           run_install: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          key: ${{ matrix.target }}
 
-      - name: Install Linux dependencies
+      - name: 安装 Linux 依赖
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -238,20 +231,19 @@ jobs:
             patchelf \
             xdg-utils
 
-      - name: Install frontend dependencies
+      - name: 前端依赖
         run: pnpm install --frozen-lockfile
 
-      - name: Sync app version from release tag
+      - name: 按 tag 同步版本号
         shell: bash
         run: |
           node -e "const fs=require('fs');const version=process.env.RELEASE_TAG.slice(1);for(const path of ['package.json','src-tauri/tauri.conf.json']){const json=JSON.parse(fs.readFileSync(path,'utf8'));json.version=version;fs.writeFileSync(path,JSON.stringify(json,null,2)+'\n')}"
           node -e "const pkg=require('./package.json');console.log('Building OneMail 往来 v'+pkg.version)"
 
-      - name: Build and upload Tauri bundles
+      - name: 构建并上传安装包
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: ${{ matrix.apple_signing_identity || '' }}
         with:
           releaseId: ${{ needs.prepare.outputs.release_id }}
           tagName: ${{ env.RELEASE_TAG }}
@@ -259,15 +251,15 @@ jobs:
           uploadUpdaterJson: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
-      # Tauri 自动探测的 deb 依赖在 Ubuntu 24.04+ 上不成立（libgtk-3-0 已改名 t64），
-      # 修补控制文件后覆盖上传。
-      - name: Fix deb dependencies and re-upload
+      # Ubuntu 24.04+ 上 libgtk-3-0 已改名 libgtk-3-0t64，Tauri 自动探测的 Depends
+      # 在这些发行版装不上；修补控制文件后覆盖上传同一个版本。
+      - name: 修补 deb 依赖并覆盖上传
         if: runner.os == 'Linux'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           node scripts/patch-deb-depends.mjs
-          deb=$(ls src-tauri/target/release/bundle/deb/*.deb | head -n1)
+          deb=$(ls -t src-tauri/target/release/bundle/deb/*.deb | head -n1)
           echo "patching: $deb"
           gh release upload "${RELEASE_TAG}" "$deb" --clobber
