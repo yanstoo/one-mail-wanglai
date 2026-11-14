@@ -26,42 +26,52 @@ OneMail is a local-first desktop mail client built with Tauri 2, Rust, React, an
 
 ## Features
 
-- **Multiple mail accounts**: supports Gmail, Yahoo, Alibaba Mail, Alibaba Mail Enterprise, 189 Mail, Sohu, QQ/Foxmail, Tencent Enterprise Mail, NetEase Mail, Outlook/Hotmail, Sina, 139 Mail, 21CN, Perfect Mail, iCloud, AOL, Yandex, Mail.ru, and custom IMAP/SMTP.
-- **Modern account authorization**: Gmail supports Google OAuth or an app password, while Outlook/Hotmail uses Microsoft OAuth. OAuth runs in the system browser with PKCE and automatic token refresh.
-- **IMAP folder selection**: password- and authorization-code accounts can connect to discover folders. `INBOX` is always enabled, and other selectable folders are optional.
-- **Unified inbox**: view mail across accounts with unread counts, sync status, and account actions.
-- **Local filters and search**: filter by unread, starred, today, yesterday, or the last seven days, and search subjects, senders, snippets, and cached bodies.
-- **Local read-state management**: opening an unread message updates its local state, with bulk mark-as-read support.
-- **Rust mail core**: sync enabled folders through provider APIs or IMAP, and send new messages, replies, and forwards over SMTP.
-- **Lazy body loading**: message bodies load on demand to reduce startup and sync cost.
-- **Safe HTML preview**: sanitizes HTML mail and blocks remote images and external resources by default.
-- **Attachment metadata**: displays the name, type, and size of received attachments; local files can be attached when composing.
-- **Gmail-style composer**: supports new mail, reply, reply all, forward, CC/BCC, rich text, attachments, drafts, and outbox retry.
-- **Encrypted local credentials**: mailbox passwords, app passwords, authorization codes, and OAuth tokens are stored with AES-256-GCM encryption.
-- **Local SQLite cache**: accounts, headers, bodies, attachment metadata, search indexes, and settings stay on your machine by default.
-- **Native backup and restore**: exports a consistent `.onemail` SQLite snapshot and imports compatible legacy `.sql` backups.
-- **Optional AI assistant**: connect an OpenAI-compatible API to chat, summarize the current email, extract tasks, or draft a reply. The assistant is read-only and cannot send, delete, or modify mail.
-- **Chinese and English UI**: switch languages in Settings.
+### Correspondence view (core of this fork)
 
----
+- 🧑‍🤝‍🧑 **Organised by people, not folders**: the left pane lists one row per correspondent ordered by the arrival time of the latest mail; the middle pane is a chat-style timeline; the right pane shows the message.
+- 📐 **Who counts as a correspondent**: for received mail, only the **sender**; for mail you sent, the **to / cc / bcc** recipients. Co-recipients of a broadcast message are not treated as correspondents, and your own addresses are always excluded.
+- 🗃️ **Normal / Junk groups**: junk has its own grey group; the junk folder is always synced and is detected even when the server only exposes a folder name (`Spam`, `垃圾邮件`, `廣告`).
+- 🏷️ **Badges**: the account badge sits on the avatar's bottom-right corner (editable text, ≤10 chars, custom colour); the counterpart's registrable domain (`mail.google.com` → `google`) becomes an automatic badge on its own right-aligned row, coloured by first letter — the avatar uses the same palette.
+- 📝 **Contact aliases**: rename a contact from the context menu; aliases survive a full index rebuild.
+
+### Accounts and sync
+
+- 📬 **Multiple accounts**: Gmail, Yahoo, Alibaba, QQ/Foxmail, Tencent Exmail, NetEase, Outlook, Sina, 139, iCloud, AOL, Yandex, Mail.ru and custom IMAP/SMTP.
+- 🔑 **Verified on creation**: a new account performs a real IMAP login first; on failure nothing is stored and the server error is translated into a readable reason (bad password, unknown user, DNS failure, refused port, TLS mismatch, IMAP disabled).
+- 🔄 **Sync**: folder-incremental IMAP sync, delta channels for Gmail/Graph; the folder list is refreshed before each sync and both `INBOX` and the junk folder are always enabled.
+- 📶 **Progress**: the status bar shows "syncing x/y · folder".
+
+### Reading mail
+
+- 📨 **Bodies**: loaded on demand and prefetched after each sync for mail from the last 30 days up to 5 MB (max 40 per round).
+- 🧭 **Moved mail still opens**: when the body is missing the message is relocated by `Message-ID` across every server folder and its folder/UID is updated; as a last resort the raw message is fetched in chunks.
+- 🛡️ **Sanitised HTML**: remote images and external resources are blocked by default.
+- 📎 **Attachments**: inline preview for images, save to `~/Downloads` (auto-numbered), everything else opens with the system handler; missing attachment records are re-parsed on demand.
+- 🌐 **Paragraph translation**: translations appear under each paragraph; backends: Google, LibreTranslate, Azure, DeepL.
+- ✅ **Read state**: marked locally first, then pushed as `\Seen` on a best-effort basis; a failed push never rolls back the local state.
+
+### Desktop and packaging
+
+- 🪟 **Custom title bar**: borderless on Linux/Windows with controls at the top right in minimize → maximize → close order; double-clicking the bar toggles maximise. macOS keeps the native traffic lights.
+- ⚙️ **Settings**: an in-window modal (not a separate window) with general, **account management**, AI, translation, backup and about sections.
+- 🔐 **Encrypted credentials**: AES-256-GCM with the key stored in the app data directory.
+- 📦 **Linux deb**: package `one-mail-wanglai`, binary `onemail-wanglai`; installs side by side with upstream `one-mail` without file conflicts.
 
 ## Interface
 
-OneMail uses a people-centered **Conversations** layout:
+Three panes built around people rather than folders:
 
-1. **Account sidebar**: filter conversations by account and manage accounts and synchronization.
-2. **People list**: group correspondence by email address, with separate groups for public participants in multi-person mail; search and pagination are supported.
-3. **Conversation pane**: merge received mail and locally sent messages, separate topics, collapse quoted text and signatures, and load bodies automatically as messages enter the viewport. Reply inline or start a new topic with the sending account, recipients, and CC clearly shown.
+1. **Left · correspondents**: one row per address, newest correspondence first; group tabs for Normal / Junk with unread badges and an "all mailboxes" filter.
+2. **Middle · timeline**: every message with that person grouped by day; unread bubbles are bold with a dot; the footer button writes a **new mail to them**.
+3. **Right · message**: toolbar with reply, reply-all, translate, forward, mark as junk and delete; then sender, recipients and CC (long lists wrap), body and attachments.
 
-URLs and labeled links in message bodies open in the system default browser. Historical participant data is filled during synchronization; correspondence not yet synchronized locally is absent. BCC-only sent records remain in the outbox, and BCC addresses never enter the public conversation participant list.
+Interaction notes:
 
-The composer is a floating Gmail-like window. It can expand or restore, CC/BCC fields open on demand, and the footer contains send, formatting, attachment, link, save-draft, and discard actions.
-
-Settings include display language, remote-content policy, local backup, AI connection, and app information.
-
-When no account exists, you can add one or import a `.onemail`, compatible OneMail `.sqlite`, or legacy `.sql` backup.
-
----
+- **Replies only start from the bubble context menu** (with a quote); the footer is a fresh message.
+- Opening an unread mail marks it read and refreshes badges and bubble styling.
+- Switching correspondents clears the right pane so no stale message can leak through.
+- If the contact only appears in the To / CC list, the reader explains why the message is filed under that person.
+- Attachments: images preview inline, "Download" saves to `~/Downloads`, PDFs and others open in the system handler.
 
 ## Account Authorization
 
@@ -134,18 +144,15 @@ You can also run `make deploy`. It generates a Shanghai-time version, updates `p
 
 ## Usage
 
-1. **Add an account**: click the add button and choose a common provider or custom IMAP.
-2. **Authorize it**: Gmail and Outlook can complete OAuth in the system browser; other providers use a password or authorization code as required.
-3. **Choose and sync folders**: password- and authorization-code accounts can discover and select IMAP folders first. Sync starts after saving and can also be triggered manually.
-4. **Find conversations**: filter by account or search the people list by name or email address.
-5. **Read mail**: messages load their bodies and update their local read state when visible. Expand or collapse long bodies.
-6. **Open links and images**: message links open in the default browser; HTML mode can load remote images for an individual message.
-7. **Compose and reply**: start a conversation, reply inline, or create a new topic. The composer supports CC, BCC, and local attachments.
-8. **Manage drafts and the outbox**: closing a non-empty composer saves a draft. Continue editing, retry sending, or delete records in the outbox.
-9. **Optionally configure AI**: verify your own AI service in Settings to use the chat assistant.
-10. **Back up data**: export a `.onemail` backup in Settings and restore from a local backup.
-
----
+1. **Add a mailbox**: "+" in the header → pick a provider or custom IMAP → fill in host/port/password. The login is verified before saving, so a wrong account never lands in the database.
+2. **Sync**: sync starts automatically after saving; the header also has a manual sync button. The junk folder is synced by default and can be paused per account in Settings → Accounts.
+3. **Find people**: the left pane is ordered by arrival time; the group tab switches to Junk; the dropdown filters by mailbox.
+4. **Read**: click a bubble in the middle pane; unread messages become read automatically.
+5. **Reply**: right-click a bubble → Reply / Reply all; the reader switches to a composer with the quote. The footer button writes a new mail without a quote.
+6. **Translate**: click Translate; translations appear under each paragraph; click again to collapse.
+7. **Attachments**: use Preview / Download below the body; downloads land in `~/Downloads`.
+8. **Manage accounts**: Settings → Accounts to edit the alias, badge and colour, pause sync or remove an account.
+9. **Backup**: Settings → Backup exports an `.onemail` snapshot and can restore it.
 
 ## Data and Security
 
@@ -161,40 +168,47 @@ You can also run `make deploy`. It generates a Shanghai-time version, updates `p
 
 ## Current Limitations
 
-- Downloading received attachments is still being migrated; only attachment metadata is available today.
-- Local read/unread changes are not yet written back to the remote mailbox over IMAP.
-- WebDAV and S3 backup are not yet migrated. Local `.onemail` import/export and legacy SQL import are available.
-- The Tauri updater source is not configured. Use the project website or GitHub Releases for new versions.
-- IMAP sync reads at most the latest 200 messages per enabled folder, and the initial Gmail API scan currently covers the latest 200 messages in `INBOX`. Sync interval, cache-window, and open-at-login settings are not yet wired to system behavior.
-- OAuth, IMAP, SMTP, AI-service, and operating-system credential-store behavior depends on real accounts, services, and runtime environments. Verify them before production use.
-
----
+- **Delete is local only** — messages are not removed or moved on the server.
+- **Marking junk is local only** — no IMAP MOVE yet.
+- Body prefetch covers the last 30 days, ≤5 MB, max 40 per round; older or larger mail is fetched on demand.
+- PDFs are not rendered inline (WebKitGTK has no built-in PDF plugin); Preview opens the system viewer. Inline PDF would need pdf.js.
+- IMAP syncs at most the most recent 200 messages per enabled folder; sync interval, cache window and autostart are not wired to system behaviour yet.
+- Remote backup (WebDAV / S3) and auto-update feeds are not configured.
+- OAuth, IMAP, SMTP and AI availability depends on real accounts and services — verify before production use.
 
 ## Project Structure
 
 ```text
-src/
-├── app/                  # React Router configuration
-├── components/           # Account, mail, AI, backup, settings, and UI components
-├── features/             # Mailbox workspace and interaction logic
-├── lib/                  # Tauri API adapter, i18n, and query client
-├── pages/                # Mailbox and add-account pages
-└── shared/               # Shared frontend types and provider metadata
+src/                              # Frontend (React 19 + TS)
+├── app/                          # Router: / → correspondence view
+├── components/
+│   ├── account/                  # Add-account dialog and form
+│   ├── settings/                 # Settings modal (incl. accounts / translation)
+│   ├── mail/                     # Composer and message rendering
+│   ├── window-controls.tsx       # Custom window buttons for Linux/Windows
+│   └── context-menu.tsx          # Context menu (alias, reply)
+├── features/correspondents/      # Contact list, timeline, message reader
+├── lib/                          # Tauri API adapter, i18n, query client
+├── pages/                        # Shared outbox / account pages
+└── shared/                       # Shared types and provider metadata
 
-src-tauri/
-├── src/
-│   ├── commands/         # Account, message, AI, backup, settings, and system commands
-│   ├── ai.rs             # Read-only OpenAI-compatible assistant
-│   ├── db.rs             # SQLite initialization and connections
-│   ├── db/schema.sql     # Database schema
-│   ├── gmail_api.rs      # Gmail incremental-sync adapter
-│   ├── graph_api.rs      # Microsoft incremental-sync adapter and fallback boundary
-│   ├── oauth.rs          # Google and Microsoft OAuth
-│   ├── mail_sync.rs      # Mail synchronization
-│   ├── mail_transport.rs # IMAP transport and credential handling
-│   └── smtp_send.rs      # SMTP sending
-├── capabilities/         # Tauri permissions
-└── tauri.conf.json       # Desktop window and build configuration
+src-tauri/src/                    # Backend (Rust)
+├── commands/
+│   ├── data/                     # Accounts, messages, drafts, correspondents, translate
+│   ├── backup/                   # .onemail import/export
+│   └── system.rs                 # Windows, logging, paths, settings window
+├── db/
+│   ├── schema.sql                # Schema (incl. the three correspondence tables)
+│   ├── correspondents.rs         # Index rebuild / incremental ingest / ordering
+│   └── mod.rs                    # Connections and SCHEMA_VERSION migrations
+├── mail/
+│   ├── sync/                     # IMAP / Gmail / Graph sync
+│   ├── body/                     # Body fetch, attachments, prefetch
+│   ├── transport/                # IMAP connection and folder discovery
+│   └── smtp.rs                   # Sending
+├── translate/                    # Translation backends
+├── ai/                           # Read-only AI assistant
+└── lib.rs                        # Commands, tray, single instance, window events
 ```
 
 ---

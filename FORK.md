@@ -2,73 +2,64 @@
 
 ## 来源
 
-- 上游项目：<https://github.com/zhihui-hu/one-mail>（Copyright (C) Huzhihui）
-- 本分支仓库：<https://github.com/yanstoo/one-mail>
-- 分叉起点：`main` @ `d1be24d`（2026-09-24）
-- 授权：AGPL-3.0-only，与上游一致（全文见 [LICENSE](./LICENSE)，版权归属见 [NOTICE](./NOTICE)）
+- 上游：[zhihui-hu/one-mail](https://github.com/zhihui-hu/one-mail)（Copyright (C) Huzhihui）
+- 本分支：**OneMail 往来**（仓库 `yanstoo/one-mail`），以 AGPL-3.0-only 发布
+- 定位：把上游「按文件夹/账号分组的收件箱」改成**按往来联系人组织的三栏视图**
 
-## 本分支要做什么
+## 一、界面与交互差异
 
-把「按邮箱分组的收件箱」改造成「按来往联系人归并的往来时间线」：
+| 项目 | 上游 | 本分支 |
+| --- | --- | --- |
+| 主入口 | 收件箱（文件夹维度） | **往来三栏**：联系人 → 时间线 → 正文 |
+| 联系人聚合 | 无 | 一行一个邮箱地址，按「最近到达时间」倒序 |
+| 中栏 | 邮件列表 | 聊天式时间线，按天分组；未读加粗 + 圆点 |
+| 回复入口 | 底部工具栏 | **只从气泡右键进入**（带原文引用）；底部按钮是「写邮件给 TA」 |
+| 窗口 | 系统装饰 | Linux/Windows 无系统装饰、自绘标题栏（按钮右上：最小化→最大化→关闭，双击切换最大化）；macOS 保留原生交通灯 |
+| 设置 | 独立窗口 | **主窗口内模态弹窗**，新增「账号管理」分区 |
+| 徽标 | 无 | 账号短徽标（头像右下角，≤10 字、自定义颜色）+ 对方域名一级标签（自动配色，单独一行右对齐） |
 
-- **左栏**：一个来往邮箱地址一行，按该地址全部邮件的最新时间倒序；行右下角用短徽标标出这封邮件落在我的哪个邮箱（最多 2 个，溢出显示 `+N`，hover 展示全部）。
-- **左栏分组**：普通 / 垃圾两个分组 tab，各带未读角标（普通红、垃圾灰）。分组只影响联系人归属、排序键与角标取数，不影响内容。
-- **中栏**：与某个联系人的全部往来（不按我的邮箱分组、全部平铺），聊天气泡布局——对方在左、我在右，只显示标题，点击在右栏加载正文；垃圾邮件用灰标区分。
-- **右栏**：正文阅读器；写信界面内嵌在右栏（上游是右下角浮层），右上「写邮件」与中栏「回复」共用同一处。
-- **数据层**：新增跨全部邮箱账号的联系人索引表（`onemail_correspondents` 等），替代原有的运行时聚合查询。
+## 二、数据模型差异
 
-## 与上游的边界（重要）
+新增三张物化索引表（`src-tauri/src/db/schema.sql`）：
 
-为了能持续吃到上游的协议修复，本分支刻意把改动收在「外壳」层：
+- `onemail_correspondents`：联系人（`address_norm` 唯一、`alias` 备注名、`last_at` 排序键、垃圾分组用 `junk_last_at`）
+- `onemail_correspondent_accounts`：联系人 × 我的账号（徽标来源）
+- `onemail_correspondent_messages`：联系人 × 邮件（`source` 区分 `mail` / `outbox` 两套 id 空间）
 
-| 层 | 目录 | 策略 |
-|---|---|---|
-| 内核（尽量零改动） | `src-tauri/src/mail/`、`src-tauri/src/oauth/`、`src-tauri/src/db/schema.sql` | 只在必要时改动，改动处加 `FORK:` 注释 |
-| 外壳（本分支主战场） | `src-tauri/src/commands/data/`、`src/features/`、`src/components/` | 自由改 |
+口径（用户裁定，v6 迁移后固定）：
 
-上游同步方式：
+- **收到的邮件** → 往来人取 `from`
+- **我发出的邮件**（Sent 文件夹 / 发件箱）→ 往来人取 `to` / `cc` / `bcc`
+- 自己的地址永远排除；群发邮件的共同收件人**不算**往来人
 
-```bash
-git remote add upstream git@github.com:zhihui-hu/one-mail.git
-git fetch upstream
-git log --oneline main..upstream/main -- src-tauri/src/mail src-tauri/src/oauth   # 只看内核修复
-git cherry-pick <commit>                                                          # 按需挑，不整体 merge
-```
+## 三、同步与正文
 
-## 命名与标识
+- 同步前刷新服务器文件夹表，`INBOX` 与垃圾箱（`role=junk`）强制启用；文件夹识别兼容 `\Spam` 与常见中文名。
+- 时间统一归一化为 ISO-8601 UTC：IMAP 优先取服务器 `INTERNALDATE`，缺失才用 `Date` 头。
+- 正文双通道：
+  1. **预取**：同步后补最近 30 天、≤5 MB、每轮最多 40 封（60 秒冷却去重）
+  2. **兜底**：原文件夹取不到时，按 `Message-ID` 在全部服务器文件夹重新定位并回写位置；仍失败则 `HEADER` + 分片 `TEXT` 分段抓取
+- 已读：本地先行，再尽力回写 `\Seen`；服务器不可达不回滚本地状态。
 
-- 产品名（打包/桌面条目，**必须是 ASCII**）：`OneMail Wanglai`（开发态 `OneMail Wanglai Dev`）
-  —— 原因：Debian 包名只允许小写 ASCII，中文会让 `dpkg` 直接拒收
-- 界面显示名（托盘、通知、关于页、i18n）：**OneMail 往来**
-- identifier：`com.huzhihui.onemail.wanglai`（开发态 `.dev`）
-  沿用上游前缀 + `wanglai` 子后缀，目的是避免与上游安装包**共享数据目录与单实例锁**——同 identifier 会导致两个版本读写同一个 SQLite、互相抢窗口。
-- 以下标识刻意**保持不变**，以免引入迁移成本：Cargo/npm 包名 `onemail`、lib 名 `onemail_lib`、数据表前缀 `onemail_`、备份扩展名 `.onemail`、环境变量前缀 `ONEMAIL_*`。
+## 四、附件与翻译
 
-## 已知差异与风险
+- 附件：图片内嵌预览、下载到 `~/Downloads`（重名加序号）、其它类型交系统程序；老邮件缺附件记录时自动重新解析。
+- 翻译：Google / LibreTranslate / Azure / DeepL 四后端；**逐段对照**（每段原文下方贴译文），按段缓存。
 
-- 本分支的数据库版本会逐渐与新上游不同，两边备份（`.onemail`）不建议互换导入。
-- 上游官网与下载页（`docs/index.html`）仍是上游内容，本分支尚未替换。
+## 五、打包差异
 
-## Google OAuth 的现实约束（选型依据）
+- `productName` 必须是 ASCII：`OneMail Wanglai`（中文会被 `dpkg` 拒收）
+- 二进制 `onemail-wanglai`、identifier `com.huzhihui.onemail.wanglai`（开发态 `.wanglai.dev`）
+- 与上游 `one-mail` 并存安装、零文件冲突、数据目录互不影响
+- Ubuntu 24.04+ 的 GTK 依赖改名 `libgtk-3-0t64`，由 `scripts/patch-deb-depends.mjs` 在打包后修补控制文件
 
-Gmail 的邮件 scope（`https://mail.google.com/`）属于 Google 的**受限范围**，因此：
+## 六、文档
 
-| 方案 | 成本 | 适用 |
-|---|---|---|
-| **应用专用密码**（默认选项） | 0，无需任何 Google 配置 | 个人/小范围使用，推荐 |
-| 自备 OAuth 客户端 ID（应用内填写或编译期内置） | 0（自建 Cloud 项目，免费） | 想要「浏览器点一下即登录」的个人用户 |
-| Testing 模式公开分发 | 0，但限 100 个测试用户，且 refresh token **7 天过期** | 仅自用/内部 |
-| 正式验证 + 每年 CASA Tier 2 评估 | 约 $540–3000/年（按 OAuth client 计），需每年重做 | 面向公众分发、要长期免重登 |
+- [README.md](./README.md)：当前功能与用法
+- [docs/README.md](./docs/README.md)：文档索引
+- [docs/PITFALLS.md](./docs/PITFALLS.md)：踩坑记录（现象 → 根因 → 解决 → 预防）
+- [RELEASING.md](./RELEASING.md)：发版与打包
 
-参考：GNOME 因 evolution-data-server / gnome-online-accounts 使用受限 scope，必须每年做 CASA
-评估（<https://gitlab.gnome.org/Teams/Board/-/work_items/835>）；Herald 等桌面邮件客户端的做法是
-把自建的 client id/secret **编进发布二进制**（desktop public client 的 secret 不是安全边界），
-源码构建用环境变量覆盖（<https://github.com/herald-email/herald-mail-app>）。
+## 七、上游未改动的部分
 
-本分支的做法：
-- 默认走应用专用密码，零配置可用；
-- 支持三种提供 client id 的方式，优先级为「运行时环境变量 > 编译期内置（`ONEMAIL_GOOGLE_CLIENT_ID` 在构建时注入）> 应用内填写」。
-
-> 不建议复用 Thunderbird 等他人项目的 client id：违反 Google API 服务用户数据政策，
-> 可能被 Google 封禁或限流，且同意屏幕会显示成别人的应用名。
-
+同步/发送/OAuth/AI/备份等 Rust 核心能力沿用上游实现；本分支只在其上叠加往来索引、视图与打包配置。
