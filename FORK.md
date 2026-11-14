@@ -57,7 +57,6 @@
 
 - [README.md](./README.md)：当前功能与用法
 - [docs/README.md](./docs/README.md)：文档索引
-- [docs/PITFALLS.md](./docs/PITFALLS.md)：踩坑记录（现象 → 根因 → 解决 → 预防）
 - [RELEASING.md](./RELEASING.md)：发版与打包
 
 ## 七、上游未改动的部分

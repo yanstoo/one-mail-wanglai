@@ -114,7 +114,7 @@ apt-get install -s ./<包>.deb       # 模拟安装，能解析依赖即通过�
 
 ---
 
-## 七、数据库迁移与文档同步（本分支约定）
+## 七、数据库迁移
 
 **升 `SCHEMA_VERSION` 的时机**（`src-tauri/src/db/mod.rs`）：
 
@@ -123,13 +123,6 @@ apt-get install -s ./<包>.deb       # 模拟安装，能解析依赖即通过�
 - 需要清理历史脏数据（例如已不再展示的邮件链接）
 
 迁移写法：在 `apply_migrations` 里按版本号追加分支，用 `if version < N { … }`，最后统一 `set_schema_version`。涉及排序/聚合的改动记得紧跟 `correspondents::rebuild_all(connection)?`。
-
-**发版前文档检查**：
-
-- [ ] `README.md` 的「功能特性 / 界面概览 / 当前限制」与代码一致
-- [ ] `FORK.md` 的差异表已更新
-- [ ] 新踩的坑已写进 `docs/PITFALLS.md`（现象 → 根因 → 解决 → 预防）
-- [ ] 新增文档已在 `docs/README.md` 索引登记
 
 **当前迁移历史**：
 

@@ -1,17 +1,11 @@
-# 文档索引
+# 文档
 
-| 文档 | 内容 | 面向 |
-| --- | --- | --- |
-| [../README.md](../README.md) | 功能特性、界面概览、使用说明、限制 | 使用者 |
-| [../FORK.md](../FORK.md) | 与上游的差异（界面/数据模型/同步/打包） | 想了解改动范围的人 |
-| [PITFALLS.md](./PITFALLS.md) | 踩坑记录：现象 → 根因 → 解决 → 预防 | 维护者 |
-| [../RELEASING.md](../RELEASING.md) | 版本号、构建、deb 依赖修补、发版自检 | 维护者 |
-| [../NOTICE](../NOTICE) | 版权与修改声明 | 合规 |
-| [../LICENSE](../LICENSE) | AGPL-3.0-only 全文 | 合规 |
-| [../design-qa.md](../design-qa.md) | 上游时期的设计稿比对记录（历史，未随本分支更新） | 历史参考 |
-
-## 维护约定
-
-- 功能或口径发生变化时同步更新 `README.md` 的「功能特性 / 界面概览 / 当前限制」三节。
-- 每次踩坑修完，在 `PITFALLS.md` 追加一条，按固定四段写：现象、根因、解决、预防。
-- 新增文档必须在本索引登记一行。
+| 文档 | 内容 |
+| --- | --- |
+| [../README.md](../README.md) | 功能特性、界面概览、使用说明、当前限制、项目结构、技术栈 |
+| [../README.en.md](../README.en.md) | 英文版 README |
+| [../FORK.md](../FORK.md) | 与上游的差异：界面、数据模型、同步、附件与翻译、打包 |
+| [../RELEASING.md](../RELEASING.md) | 版本号规则、构建与打包、deb 依赖、数据库迁移版本 |
+| [../design-qa.md](../design-qa.md) | 上游时期的设计稿比对记录（历史） |
+| [../NOTICE](../NOTICE) | 版权与修改声明 |
+| [../LICENSE](../LICENSE) | AGPL-3.0-only |
