@@ -121,6 +121,7 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
   const [detailLoading, setDetailLoading] = React.useState(false)
   const [detailError, setDetailError] = React.useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = React.useState(false)
+  const [markingRead, setMarkingRead] = React.useState(false)
   const [syncing, setSyncing] = React.useState(false)
   const [syncProgress, setSyncProgress] = React.useState<{
     completed: number
@@ -300,6 +301,24 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
         void queryClient.invalidateQueries({ queryKey: ['correspondents'] })
       })
   }
+
+  /** 一键已读：把当前联系人的全部未读标为已读（只改本地，不回写服务器） */
+  const markAllRead = React.useCallback(async (): Promise<void> => {
+    if (!selectedId) return
+    setMarkingRead(true)
+    try {
+      const result = await window.api.correspondents.markRead(selectedId)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['correspondents'] }),
+        queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      ])
+      toast.success(result.updated > 0 ? `已把 ${result.updated} 封标为已读` : '没有未读邮件')
+    } catch (cause: unknown) {
+      toast.error(typeof cause === 'string' ? cause : '标记已读失败')
+    } finally {
+      setMarkingRead(false)
+    }
+  }, [queryClient, selectedId])
 
   const startCompose = React.useCallback(
     async (kind: ComposeKind, related?: CorrespondentThreadMessage | null): Promise<void> => {
@@ -581,6 +600,8 @@ export function CorrespondentsWorkspace(): React.JSX.Element {
             onReplyTo={(message) => void startCompose('reply', message)}
             onReply={() => void startCompose(replyTarget ? 'reply' : 'new', replyTarget)}
             onCompose={() => void startCompose('new', null)}
+            onMarkAllRead={() => void markAllRead()}
+            marking={markingRead}
           />
 
           {composeOpen ? (

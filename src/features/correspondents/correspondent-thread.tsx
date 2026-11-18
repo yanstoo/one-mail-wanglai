@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Paperclip, PenLine, Plus } from 'lucide-react'
+import { CheckCheck, Paperclip, PenLine, Plus } from 'lucide-react'
 
 import { ContextMenu, useContextMenu } from '@renderer/components/context-menu'
 import { formatRelativeTime } from '@renderer/components/mail/date-format'
@@ -15,9 +15,15 @@ import { groupThreadByDay, threadMessageKey } from './correspondent-utils'
 
 function Header({
   profile,
+  unreadCount,
+  marking,
+  onMarkAllRead,
   onReply
 }: {
   profile: CorrespondentProfile
+  unreadCount: number
+  marking: boolean
+  onMarkAllRead: () => void
   onReply: () => void
 }): React.JSX.Element {
   return (
@@ -57,6 +63,16 @@ function Header({
           </span>
         ) : null}
       </div>
+      <button
+        type="button"
+        onClick={onMarkAllRead}
+        disabled={unreadCount === 0 || marking}
+        className="flex h-7 items-center gap-1 rounded-md border border-border px-1.5 text-[10.5px] text-muted-foreground transition-colors hover:bg-muted disabled:opacity-40"
+        title={unreadCount > 0 ? `把这个人的 ${unreadCount} 封未读全部标为已读` : '没有未读邮件'}
+      >
+        <CheckCheck className="size-3.5" aria-hidden="true" />
+        {marking ? '处理中…' : '全部已读'}
+      </button>
       <button
         type="button"
         onClick={onReply}
@@ -155,7 +171,9 @@ export function CorrespondentThread({
   onSelectMessage,
   onReplyTo,
   onReply,
-  onCompose
+  onCompose,
+  onMarkAllRead,
+  marking
 }: {
   thread: CorrespondentThreadResult | undefined
   loading: boolean
@@ -165,7 +183,16 @@ export function CorrespondentThread({
   onReplyTo: (message: CorrespondentThreadMessage) => void
   onCompose: () => void
   onReply: () => void
+  /** 一键把该联系人的全部未读标为已读 */
+  onMarkAllRead: () => void
+  marking: boolean
 }): React.JSX.Element {
+  const unreadCount = React.useMemo(
+    () =>
+      (thread?.messages ?? []).filter((message) => message.source === 'mail' && !message.isRead)
+        .length,
+    [thread]
+  )
   const grouped = React.useMemo(() => groupThreadByDay(thread?.messages ?? []), [thread])
 
   if (!thread) {
@@ -178,7 +205,13 @@ export function CorrespondentThread({
 
   return (
     <section className="flex min-h-0 w-[380px] shrink-0 flex-col border-r border-border bg-background">
-      <Header profile={thread.correspondent} onReply={onReply} />
+      <Header
+        profile={thread.correspondent}
+        unreadCount={unreadCount}
+        marking={marking}
+        onMarkAllRead={onMarkAllRead}
+        onReply={onReply}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-3">
         {grouped.map((bucket) => (

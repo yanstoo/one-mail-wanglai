@@ -4,7 +4,8 @@ use rusqlite::{params, Connection};
 use serde_json::Value;
 
 use super::{
-    group_counts, list, on_read_state_changed, rebuild_all, set_alias, thread, GROUP_JUNK, GROUP_NORMAL,
+    group_counts, list, mark_all_read, on_read_state_changed, rebuild_all, set_alias, thread,
+    GROUP_JUNK, GROUP_NORMAL,
 };
 
 const SEED: &str = "
@@ -386,4 +387,36 @@ fn full_rebuild_preserves_contact_alias() {
         )
         .expect("correspondent still exists");
     assert_eq!(alias.as_deref(), Some("老客户 Grace"));
+}
+
+#[test]
+fn mark_all_read_clears_unread_and_updates_counts() {
+    let connection = setup();
+    let first = insert_message(&connection, 1, 1, 1, "未读一", "2026-11-01T09:00:00.000Z", 0);
+    add_address(&connection, first, "from", "alice@corp.test", "Alice");
+    let second = insert_message(&connection, 1, 1, 2, "未读二", "2026-11-02T09:00:00.000Z", 0);
+    add_address(&connection, second, "from", "alice@corp.test", "Alice");
+    rebuild_all(&connection).expect("rebuild index");
+
+    let items = list(&connection, GROUP_NORMAL, None, None, 50, None).expect("list normal");
+    let alice = find(&items, "alice@corp.test");
+    assert_eq!(alice["unreadCount"], 2);
+    let correspondent_id = alice["correspondentId"].as_i64().expect("id");
+
+    let updated = mark_all_read(&connection, correspondent_id).expect("mark all read");
+    assert_eq!(updated, 2);
+
+    let items = list(&connection, GROUP_NORMAL, None, None, 50, None).expect("list after");
+    let alice = find(&items, "alice@corp.test");
+    assert_eq!(alice["unreadCount"], 0);
+
+    // read_state_override 固定住本地状态，避免被下次同步覆盖回未读
+    let override_value: Option<i64> = connection
+        .query_row(
+            "SELECT read_state_override FROM onemail_mail_messages WHERE message_id=?1",
+            [first],
+            |row| row.get(0),
+        )
+        .expect("read override");
+    assert_eq!(override_value, Some(1));
 }

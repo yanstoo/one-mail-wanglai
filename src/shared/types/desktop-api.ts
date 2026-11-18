@@ -15,6 +15,8 @@ export type OneMailApi = {
   correspondents: {
     list: (query: CorrespondentListQuery) => Promise<CorrespondentListResult>
     thread: (correspondentId: number, before?: string | null, limit?: number) => Promise<CorrespondentThreadResult>
+    /** 一键已读：把该联系人的全部未读标为已读 */
+    markRead: (correspondentId: number) => Promise<{ updated: number }>
     groupCounts: () => Promise<CorrespondentGroupCounts>
     /** 设置联系人备注名；传 null 清除 */
     setAlias: (correspondentId: number, alias: string | null) => Promise<{ correspondentId: number; alias: string | null }>

@@ -78,6 +78,33 @@ pub fn reindex_account(connection: &Connection, account_id: i64) -> Result<(), S
 }
 
 /// 已读状态变化后刷新该邮件涉及的联系人未读计数。
+
+/// 把某个联系人的全部往来邮件标记为已读（只改本地，不回写服务器 \Seen）。
+///
+/// 用 `read_state_override=1` 固定本地状态，避免下一次同步把 \Seen 状态覆盖回未读。
+pub fn mark_all_read(connection: &Connection, correspondent_id: i64) -> Result<usize, String> {
+    let changed = connection
+        .execute(
+            "UPDATE onemail_mail_messages SET is_read=1, read_state_override=1,
+               updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE message_id IN (
+               SELECT message_id FROM onemail_correspondent_messages
+               WHERE correspondent_id=?1 AND source='mail' AND is_read=0
+             )",
+            [correspondent_id],
+        )
+        .map_err(|error| format!("标记已读失败：{error}"))?;
+    connection
+        .execute(
+            "UPDATE onemail_correspondent_messages SET is_read=1
+             WHERE correspondent_id=?1 AND source='mail' AND is_read=0",
+            [correspondent_id],
+        )
+        .map_err(|error| format!("标记已读失败：{error}"))?;
+    refresh_aggregates(connection)?;
+    Ok(changed)
+}
+
 pub fn on_read_state_changed(connection: &Connection, message_id: i64) -> Result<(), String> {
     let mut statement = connection
         .prepare(

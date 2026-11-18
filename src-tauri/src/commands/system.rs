@@ -229,6 +229,26 @@ pub fn system_reveal_path(path: String) -> Result<bool, String> {
 }
 
 /// 用系统默认程序打开一个本地文件（附件预览用）。
+
+/// 有新邮件时让任务栏/Dock 图标提醒（Windows 闪烁、macOS 跳动、Linux 设置紧急提示）。
+pub fn request_attention(app: &AppHandle) {
+    use tauri::{Manager, UserAttentionType};
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_focused().unwrap_or(false) {
+            return;
+        }
+        let _ = window.request_user_attention(Some(UserAttentionType::Critical));
+    }
+}
+
+/// 用户回到窗口后取消提醒。
+pub fn clear_attention(app: &AppHandle) {
+    use tauri::Manager;
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.request_user_attention(None::<tauri::UserAttentionType>);
+    }
+}
+
 #[tauri::command]
 pub fn system_open_path(path: String) -> Result<bool, String> {
     let target = PathBuf::from(&path);

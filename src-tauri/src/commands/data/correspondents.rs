@@ -110,3 +110,14 @@ pub fn correspondents_set_alias(
         .map_err(|error| format!("读取备注名失败：{error}"))?;
     Ok(json!({ "correspondentId": correspondent_id, "alias": stored }))
 }
+
+/// 一键已读：把该联系人的所有往来邮件标记为已读。
+#[tauri::command]
+pub fn correspondents_mark_read(
+    state: State<'_, AppState>,
+    correspondent_id: i64,
+) -> Result<Value, String> {
+    let connection = db::open(&state)?;
+    let updated = correspondents::mark_all_read(&connection, correspondent_id)?;
+    Ok(serde_json::json!({ "updated": updated }))
+}

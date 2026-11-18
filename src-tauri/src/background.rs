@@ -133,14 +133,19 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
         };
         tray = tray.icon(icon)
             .show_menu_on_left_click(false)
-            .on_tray_icon_event(|tray, event| {
-                if matches!(event, TrayIconEvent::Click {
+            .on_tray_icon_event(|tray, event| match event {
+                // 单击：显示/聚焦
+                TrayIconEvent::Click {
                     button: MouseButton::Left,
                     button_state: MouseButtonState::Up,
                     ..
-                }) {
-                    show_main_window(tray.app_handle());
-                }
+                } => show_main_window(tray.app_handle()),
+                // 双击：同样打开主界面（Windows 支持；macOS 状态栏没有双击语义）
+                TrayIconEvent::DoubleClick {
+                    button: MouseButton::Left,
+                    ..
+                } => show_main_window(tray.app_handle()),
+                _ => {}
             });
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]

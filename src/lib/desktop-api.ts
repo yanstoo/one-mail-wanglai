@@ -42,6 +42,7 @@ export function createDesktopApi(): OneMailApi {
       list: (query) => command('correspondents_list', { query }),
       thread: (correspondentId, before, limit) =>
         command('correspondents_thread', { correspondentId, before: before ?? null, limit: limit ?? null }),
+      markRead: (correspondentId) => command('correspondents_mark_read', { correspondentId }),
       groupCounts: () => command('correspondents_group_counts'),
       setAlias: (correspondentId, alias) => command('correspondents_set_alias', { correspondentId, alias })
     },

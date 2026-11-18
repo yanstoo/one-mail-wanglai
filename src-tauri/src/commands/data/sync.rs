@@ -106,6 +106,8 @@ pub(crate) fn publish_sync_result(app: &AppHandle, result: &Value, mode: Option<
         );
 
         if let Some(mut notification) = new_mail_notification(account_result, mode) {
+            // 新邮件（newMessages 只收 INBOX，天然排除垃圾）→ 任务栏图标提醒
+            system::request_attention(&app);
             notification["reason"] = Value::String(reason.to_owned());
             let _ = app.emit("notifications/newMail", &notification);
             let app = app.clone();

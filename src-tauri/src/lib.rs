@@ -106,6 +106,8 @@ pub fn run() {
             if window.label() == "main" {
                 if let tauri::WindowEvent::Focused(true) = event {
                     let app = window.app_handle();
+                    // 回到窗口即取消任务栏的「有新邮件」提醒
+                    commands::system::clear_attention(app);
                     let days = client_log::retention_days(app.state::<AppState>().inner());
                     if let Err(error) = client_log::cleanup(app, days) {
                         eprintln!("OneMail log cleanup failed: {error}");
@@ -149,6 +151,7 @@ pub fn run() {
             data::conversations::conversations_search,
             data::correspondents::correspondents_list,
             data::correspondents::correspondents_thread,
+            data::correspondents::correspondents_mark_read,
             data::correspondents::correspondents_group_counts,
             data::correspondents::correspondents_set_alias,
             data::messages::messages_stats,
