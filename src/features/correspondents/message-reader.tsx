@@ -12,6 +12,28 @@ import { bodyKey, splitParagraphs, useParagraphTranslation, useTranslation } fro
  * 右栏正文（阶段 2 轻量版）：先用 messages.get + loadBody 渲染，
  * 后续再替换为完整的 ConversationPane（含回复/转发/归档与附件表）。
  */
+
+/** 把已净化的 HTML 转成纯文本（翻译、分段都需要纯文本）。 */
+function htmlToPlainText(html: string): string {
+  if (!html.trim()) return ''
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+}
+
 export function CorrespondentMessageReader({
   message,
   contactAddress,
@@ -62,10 +84,18 @@ export function CorrespondentMessageReader({
     : (detail?.cc ?? '')
   const bodyText = isOutbox ? (outbox?.bodyText ?? '') : (detail?.body?.bodyText ?? '')
   const bodyHtml = isOutbox ? (outbox?.bodyHtml ?? '') : (detail?.body?.bodyHtmlSanitized ?? '')
+  // 纯 HTML 邮件没有纯文本副本：就地转一份，否则翻译按钮会因为 bodyText 为空而置灰
+  const plainText = React.useMemo(
+    () => (bodyText.trim() ? bodyText : htmlToPlainText(bodyHtml)),
+    [bodyText, bodyHtml]
+  )
 
   const translation = useTranslation()
   const paragraphTranslation = useParagraphTranslation()
-  const paragraphs = React.useMemo(() => (bodyText ? splitParagraphs(bodyText) : []), [bodyText])
+  const paragraphs = React.useMemo(
+    () => (plainText ? splitParagraphs(plainText) : []),
+    [plainText]
+  )
   const paragraphsNeeded = paragraphs.length > 0 && paragraphs.length <= 40
   const translatedParagraphs = message ? paragraphTranslation.paragraphsOf(message.messageId) : undefined
   const [attachmentBusy, setAttachmentBusy] = React.useState<string | null>(null)
@@ -196,10 +226,10 @@ export function CorrespondentMessageReader({
             } else if (paragraphsNeeded) {
               void paragraphTranslation.translateParagraphs(message.messageId, paragraphs)
             } else {
-              void translation.translate(translationKey, bodyText)
+              void translation.translate(translationKey, plainText)
             }
           }}
-          disabled={!bodyText || translating || paragraphTranslation.pending}
+          disabled={!plainText || translating || paragraphTranslation.pending}
           title={translatedParagraphs ? '收起译文' : '翻译正文'}
           className={cn(
             'flex items-center gap-1 disabled:opacity-40',

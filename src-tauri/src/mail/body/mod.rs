@@ -882,6 +882,9 @@ fn persist_message_body(
         .map(normalize_body_text)
         .filter(|value| !value.is_empty());
     let body_html = parsed.html.as_deref().and_then(sanitize_html);
+    // 只有 HTML 的邮件（很多营销/机构邮件）没有 text/plain 副本：
+    // 从净化后的 HTML 反推一份纯文本，保证搜索、复制与翻译都有内容可用。
+    let body_text = body_text.or_else(|| body_html.as_deref().map(html_to_text));
     // 解析不出任何正文时不要落库：写进去会让后续重试被"已有记录"挡住
     if body_text.is_none() && body_html.is_none() {
         return Err("这封邮件没有可解析的正文（可能是纯附件、加密或服务器未返回内容）".to_string());
