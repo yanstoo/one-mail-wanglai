@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { BadgeInfo, Bot, DatabaseBackup, RefreshCcw, Languages, Users } from 'lucide-react'
+import { BadgeInfo, Bot, DatabaseBackup, RefreshCcw, Languages, Users, Plug } from 'lucide-react'
 import * as React from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import {
@@ -21,6 +21,7 @@ import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import type{ AppSettings, AppUpdateStatus, AiSettings, AiSettingsInput, BackupImportResult, BackupImportSource, BackupSyncDownloadResult, BackupSyncSettings, SettingsUpdateInput, SystemInfo } from '@renderer/shared/types'
 import { useI18n, type TranslationKey } from '@renderer/lib/i18n'
 import { AccountsSettings } from './accounts-settings'
+import { McpSettingsPanel } from './mcp-settings'
 import { AiSettingsForm } from './ai-settings'
 import { TranslationSettings } from './translation-settings'
 import { GeneralSettingsForm } from './general-settings'
@@ -47,7 +48,7 @@ type SettingsDialogProps = {
   onImported?: () => Promise<void> | void
 }
 
-type SettingsSection = 'general' | 'accounts' | 'ai' | 'translate' | 'backup' | 'about'
+type SettingsSection = 'general' | 'accounts' | 'ai' | 'translate' | 'mcp' | 'backup' | 'about'
 const AUTO_SAVE_DELAY_MS = 350
 
 const sections: Array<{
@@ -74,6 +75,11 @@ const sections: Array<{
     value: 'translate',
     labelKey: 'settings.translate',
     icon: Languages
+  },
+  {
+    value: 'mcp',
+    labelKey: 'settings.mcp',
+    icon: Plug
   },
   {
     value: 'backup',
@@ -468,6 +474,9 @@ export function SettingsDialog({
           </section>
           <section ref={(node) => { sectionRefs.current.ai = node ?? undefined }} aria-label={t('settings.ai')}>
             <AiSettingsForm settings={aiSettings} onVerify={onVerifyAi} onClear={onClearAi} />
+          </section>
+          <section ref={(node) => { sectionRefs.current.mcp = node ?? undefined }} aria-label={t('settings.mcp')}>
+            <McpSettingsPanel />
           </section>
           <section ref={(node) => { sectionRefs.current.translate = node ?? undefined }} aria-label={t('settings.translate')}>
             <TranslationSettings settings={translateSettings} onSave={onSaveTranslate} />

@@ -54,6 +54,13 @@ OneMail 是一个本地优先的桌面邮件客户端，使用 Tauri 2、Rust、
 - 🌐 **逐段翻译**：翻译结果按段落贴在原文下方（沉浸式对照），支持 Google / LibreTranslate / Azure / DeepL 四种后端，可按段落缓存。
 - ✅ **已读**：打开即本地标记已读并尝试回写服务器 `\Seen`；服务器不可达时保留本地状态，不回滚。
 
+### MCP（给外部 AI 用）
+
+- 🔌 **内置 MCP 服务**：只监听 `127.0.0.1`，用 Bearer 令牌鉴权；在「设置 → MCP」里一键开关、改端口、重置令牌，并可直接复制客户端的 JSON 配置。
+- 🔧 **九个工具**：`list_accounts`、`mail_status`、`list_correspondents`、`list_messages`、`get_message`、`create_draft`、`list_drafts`、`delete_draft`、`send_draft`。
+- 🔐 **权限分三档**：读取邮件与状态始终允许；**写草稿 / 删除草稿**可单独开关；**发送邮件默认关闭**，打开后 AI 才能把草稿真正发出去。
+- 📎 附件只暴露元数据，不通过 MCP 传二进制。
+
 ### 桌面与打包
 
 - 🪟 **自绘标题栏**：Linux/Windows 无系统装饰，窗口按钮在右上角，顺序为 最小化 → 最大化 → 关闭；双击标题栏空白处切换最大化。macOS 保留原生交通灯。

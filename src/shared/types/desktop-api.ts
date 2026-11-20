@@ -3,7 +3,7 @@ import type { AccountCreateInput, AccountCreatedEvent, AccountUpdateInput, ImapF
 import type { CorrespondentGroupCounts, CorrespondentListQuery, CorrespondentListResult, CorrespondentThreadResult } from './correspondents'
 import type { AccountMailboxStats, ComposeDraft, ForwardDraftInput, MailAttachmentInput, MailMessageBodyLoadResult, MailMessageDetail, MailSendInput, MailSendResult, MessageReadStateUpdate, OutboxListQuery, OutboxMessage, ReplyDraftInput } from './messages'
 import type { AccountSyncRunResult, MailboxChangedEvent, NewMailNotification, SyncAllRunResult, SyncProgressEvent } from './sync'
-import type { AiChatInput, AiChatResult, AiSettings, AiSettingsInput, AppSettings, AppTheme, AppUpdateStatus, BackupImportProgress, BackupImportResult, BackupSyncDownloadResult, BackupSyncSettings, BackupSyncTestResult, BackupSyncTransferResult, SettingsUpdateInput, SystemInfo } from './settings'
+import type { AiChatInput, AiChatResult, AiSettings, AiSettingsInput, AppSettings, AppTheme, AppUpdateStatus, BackupImportProgress, BackupImportResult, BackupSyncDownloadResult, BackupSyncSettings, BackupSyncTestResult, BackupSyncTransferResult, McpSettings, McpSettingsInput, SettingsUpdateInput, SystemInfo } from './settings'
 
 export type OneMailApi = {
   conversations: {
@@ -87,6 +87,10 @@ export type OneMailApi = {
     exportSql: () => Promise<string | null>
     importSql: (operationId?: string) => Promise<BackupImportResult>
     onBackupImportProgress: (callback: (progress: BackupImportProgress) => void) => () => void
+  }
+  mcp: {
+    getSettings: () => Promise<McpSettings>
+    saveSettings: (input: McpSettingsInput) => Promise<McpSettings>
   }
   translate: {
     text: (input: { text: string; backend?: TranslateBackend }) => Promise<{ text: string }>

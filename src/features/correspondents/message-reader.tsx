@@ -221,6 +221,11 @@ export function CorrespondentMessageReader({
           type="button"
           onClick={() => {
             if (!message) return
+            // 不再按「有没有正文」禁用：正文可能还在加载或为纯图片，点了给出明确反馈
+            if (!plainText.trim()) {
+              toast.message(loading ? '正文还在加载，稍后再翻译' : '这封邮件没有可翻译的文字内容')
+              return
+            }
             if (translatedParagraphs) {
               paragraphTranslation.clear(message.messageId)
             } else if (paragraphsNeeded) {
@@ -229,7 +234,7 @@ export function CorrespondentMessageReader({
               void translation.translate(translationKey, plainText)
             }
           }}
-          disabled={!plainText || translating || paragraphTranslation.pending}
+          disabled={translating || paragraphTranslation.pending}
           title={translatedParagraphs ? '收起译文' : '翻译正文'}
           className={cn(
             'flex items-center gap-1 disabled:opacity-40',

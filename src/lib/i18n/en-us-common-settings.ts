@@ -1,4 +1,5 @@
 export const enUSCommonSettings = {
+  'settings.mcp': 'MCP',
   'settings.accounts': 'Accounts',
   'settings.translate': 'Translation',
   'common.cancel': 'Cancel',

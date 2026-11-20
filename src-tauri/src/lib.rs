@@ -4,6 +4,7 @@ mod client_log;
 mod commands;
 mod db;
 mod mail;
+mod mcp;
 mod oauth;
 mod state;
 mod translate;
@@ -96,6 +97,10 @@ pub fn run() {
             let _ = client_log::write(app.handle(), "INFO Client started");
             app.manage(state);
             background::start(app.handle())?;
+            // 若上次开启了 MCP 服务，启动即恢复监听（失败只记日志，不影响主流程）
+            if let Err(error) = mcp::restart(app.handle()) {
+                let _ = client_log::write(app.handle(), &format!("WARN MCP start failed: {error}"));
+            }
             prewarm_settings_window(app.handle().clone());
             // 启动后补一轮正文预取，把历史邮件的正文补齐
             std::thread::sleep(std::time::Duration::from_secs(4));
@@ -155,6 +160,8 @@ pub fn run() {
             data::correspondents::correspondents_group_counts,
             data::correspondents::correspondents_set_alias,
             data::messages::messages_stats,
+            data::mcp::mcp_settings_get,
+            data::mcp::mcp_settings_save,
             data::messages::messages_get,
             data::messages::messages_load_body,
             data::messages::messages_set_read_state,

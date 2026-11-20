@@ -1,4 +1,5 @@
 export const zhCNCommonSettings = {
+  'settings.mcp': 'MCP',
   'settings.accounts': '账号',
   'settings.translate': '翻译',
   'common.cancel': '取消',

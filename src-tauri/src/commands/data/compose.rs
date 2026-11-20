@@ -96,7 +96,7 @@ pub fn compose_save_draft(state: State<'_, AppState>, input: Value) -> Result<Va
     save_draft(&state, input)
 }
 
-fn save_draft(state: &AppState, input: Value) -> Result<Value, String> {
+pub(crate) fn save_draft(state: &AppState, input: Value) -> Result<Value, String> {
     let object = require_object(&input)?;
     let account_id = required_i64(object, "accountId", "账号 ID 无效。")?;
     let compose_kind = optional_string(object, "mode").unwrap_or_else(|| "new".to_string());
@@ -289,7 +289,7 @@ fn map_outbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     }))
 }
 
-fn get_outbox(connection: &Connection, outbox_id: i64) -> Result<Option<Value>, String> {
+pub(crate) fn get_outbox(connection: &Connection, outbox_id: i64) -> Result<Option<Value>, String> {
     let mut outbox = connection
         .query_row(
             "SELECT outbox_id,account_id,related_message_id,compose_kind,status,
@@ -322,7 +322,7 @@ fn list_outbox_attachments(connection: &Connection, outbox_id: i64) -> Result<Va
     Ok(Value::Array(attachments))
 }
 
-fn delete_outbox(state: &AppState, outbox_id: i64) -> Result<bool, String> {
+pub(crate) fn delete_outbox(state: &AppState, outbox_id: i64) -> Result<bool, String> {
     let connection = db::open(state)?;
     connection
         .execute(

@@ -3,6 +3,7 @@ pub(crate) mod ai;
 pub(crate) mod compose;
 pub(crate) mod conversations;
 pub(crate) mod correspondents;
+pub(crate) mod mcp;
 pub(crate) mod messages;
 pub(crate) mod oauth_config;
 pub(crate) mod translate;

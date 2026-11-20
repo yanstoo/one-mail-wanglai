@@ -1,7 +1,7 @@
 {
   "name": "one-mail-wanglai",
   "private": true,
-  "version": "26.1119.2306",
+  "version": "26.1121.52",
   "type": "module",
   "packageManager": "pnpm@10.34.1",
   "scripts": {

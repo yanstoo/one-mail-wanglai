@@ -125,6 +125,10 @@ export function createDesktopApi(): OneMailApi {
       onBackupImportProgress: (callback) =>
         subscribe<BackupImportProgress>('settings/backupImportProgress', callback)
     },
+    mcp: {
+      getSettings: () => command('mcp_settings_get'),
+      saveSettings: (input) => command('mcp_settings_save', { input })
+    },
     translate: {
       text: (input) => command('translate_text', { text: input.text, backend: input.backend ?? null }),
       getSettings: () => command('translate_settings_get'),

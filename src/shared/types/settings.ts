@@ -150,3 +150,23 @@ export type AppUpdateStatus = {
   progress?: AppUpdateProgress
   updatedAt: string
 }
+
+/** MCP（Model Context Protocol）服务设置。 */
+export type McpSettings = {
+  enabled: boolean
+  port: number
+  token: string
+  allowDraft: boolean
+  /** 允许 AI 真的把草稿发出去；默认关闭 */
+  allowSend: boolean
+  running: boolean
+  url: string
+}
+
+export type McpSettingsInput = {
+  enabled?: boolean
+  port?: number
+  allowDraft?: boolean
+  allowSend?: boolean
+  regenerateToken?: boolean
+}
