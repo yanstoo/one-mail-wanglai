@@ -878,7 +878,7 @@ fn upsert_correspondent(
         .map_err(|error| format!("读取联系人标识失败：{error}"))
 }
 
-fn refresh_aggregates(connection: &Connection) -> Result<(), String> {
+pub fn refresh_aggregates(connection: &Connection) -> Result<(), String> {
     connection
         .execute_batch(
             "UPDATE onemail_correspondents SET

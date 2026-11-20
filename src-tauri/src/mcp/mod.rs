@@ -448,18 +448,68 @@ fn tool_definitions() -> Value {
         },
         {
             "name": "create_draft",
-            "description": "新建草稿（不会发送）。需要允许写草稿。accountId 省略时用第一个可用账号。",
+            "description": "新建草稿（不会发送）。需要允许写草稿。accountId 省略时用第一个可用账号。传 clientKey 可幂等：同一个 key 重复调用只会返回已有草稿，不会重复创建。",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "accountId": { "type": "integer" },
+                    "clientKey": {
+                        "type": "string",
+                        "description": "调用方生成的唯一键（建议 UUID）。用于重试去重，也可用于后续 update/delete 定位。"
+                    },
                     "to": { "type": "array", "items": { "type": "string" } },
                     "cc": { "type": "array", "items": { "type": "string" } },
                     "bcc": { "type": "array", "items": { "type": "string" } },
                     "subject": { "type": "string" },
-                    "body": { "type": "string" }
+                    "body": { "type": "string" },
+                    "attachments": {
+                        "type": "array",
+                        "maxItems": 5,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "filename": { "type": "string" },
+                                "mimeType": { "type": "string" },
+                                "contentBase64": { "type": "string", "description": "文件内容（base64），单个 ≤5MB" }
+                            },
+                            "required": ["filename", "contentBase64"],
+                            "additionalProperties": false
+                        }
+                    }
                 },
                 "required": ["to", "subject", "body"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "update_draft",
+            "description": "修改草稿内容/收件人/附件。用 outboxId 或 clientKey 定位；只有状态为 draft 的草稿能改，已发送的会报错。",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "outboxId": { "type": "integer" },
+                    "clientKey": { "type": "string" },
+                    "to": { "type": "array", "items": { "type": "string" } },
+                    "cc": { "type": "array", "items": { "type": "string" } },
+                    "bcc": { "type": "array", "items": { "type": "string" } },
+                    "subject": { "type": "string" },
+                    "body": { "type": "string" },
+                    "attachments": {
+                        "type": "array",
+                        "maxItems": 5,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "filename": { "type": "string" },
+                                "mimeType": { "type": "string" },
+                                "contentBase64": { "type": "string" }
+                            },
+                            "required": ["filename", "contentBase64"],
+                            "additionalProperties": false
+                        },
+                        "description": "提供则整体替换附件；不提供则保留原有附件"
+                    }
+                },
                 "additionalProperties": false
             }
         },
@@ -474,11 +524,25 @@ fn tool_definitions() -> Value {
         },
         {
             "name": "delete_draft",
-            "description": "删除指定草稿。需要允许写草稿。",
+            "description": "删除草稿。用 outboxId 或 clientKey 定位；已发送的邮件不能删除。",
             "inputSchema": {
                 "type": "object",
-                "properties": { "outboxId": { "type": "integer" } },
-                "required": ["outboxId"],
+                "properties": {
+                    "outboxId": { "type": "integer" },
+                    "clientKey": { "type": "string" }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "mark_read",
+            "description": "把邮件标记为已读（本地生效，并尽力回写服务器 \\Seen）。可按 messageIds 或整个联系人。",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "messageIds": { "type": "array", "items": { "type": "integer" } },
+                    "correspondentId": { "type": "integer" }
+                },
                 "additionalProperties": false
             }
         },
@@ -523,12 +587,29 @@ async fn call_tool(app: &AppHandle, params: &Value) -> Result<Value, String> {
             let value = create_draft(&state, &args)?;
             return Ok(text_result(value));
         }
+        "update_draft" => {
+            if !settings.allow_draft {
+                return Err("未授予「写草稿」权限：请在 OneMail 设置 → MCP 中开启。".to_string());
+            }
+            drop(connection);
+            let value = update_draft(&state, &args)?;
+            return Ok(text_result(value));
+        }
+        "mark_read" => {
+            if !settings.allow_draft {
+                return Err("未授予「写操作」权限：请在 OneMail 设置 → MCP 中开启。".to_string());
+            }
+            drop(connection);
+            let value = mark_read(&state, &args)?;
+            return Ok(text_result(value));
+        }
         "list_drafts" => list_drafts(&connection, &args),
         "delete_draft" => {
             if !settings.allow_draft {
                 return Err("未授予「写草稿」权限：请在 OneMail 设置 → MCP 中开启。".to_string());
             }
-            let outbox_id = require_i64(&args, "outboxId")?;
+            let outbox_id = resolve_draft(&connection, &args)?;
+            ensure_draft(&connection, outbox_id, "删除")?;
             drop(connection);
             compose::delete_outbox(&state, outbox_id)?;
             return Ok(text_result(json!({ "deleted": outbox_id })));
@@ -795,6 +876,214 @@ fn get_message(state: &AppState, args: &Value) -> Result<Value, String> {
     Ok(value)
 }
 
+/// 用 outboxId 或 clientKey 定位一封草稿；两者都没有时报错。
+fn resolve_draft(connection: &Connection, args: &Value) -> Result<i64, String> {
+    if let Some(outbox_id) = opt_i64(args, "outboxId") {
+        return Ok(outbox_id);
+    }
+    if let Some(key) = args.get("clientKey").and_then(Value::as_str).map(str::trim) {
+        if !key.is_empty() {
+            let found: Option<i64> = connection
+                .query_row(
+                    "SELECT outbox_id FROM onemail_outbox_messages WHERE mcp_key=?1",
+                    [key],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|error| format!("读取草稿失败：{error}"))?;
+            return found.ok_or_else(|| format!("找不到 clientKey={key} 对应的草稿。"));
+        }
+    }
+    Err("需要 outboxId 或 clientKey 来定位草稿。".to_string())
+}
+
+/// 只有 draft 状态、且未删除的草稿允许改/删。
+fn ensure_draft(connection: &Connection, outbox_id: i64, action: &str) -> Result<Value, String> {
+    let row: Option<(String, Option<String>)> = connection
+        .query_row(
+            "SELECT status, deleted_at FROM onemail_outbox_messages WHERE outbox_id=?1",
+            [outbox_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .optional()
+        .map_err(|error| format!("读取草稿失败：{error}"))?;
+    let (status, deleted_at) = row.ok_or_else(|| format!("草稿不存在：{outbox_id}"))?;
+    if deleted_at.is_some() || status != "draft" {
+        return Err(format!(
+            "只能{action}草稿；这条记录的状态是 {status}，已发送的邮件不能{action}。"
+        ));
+    }
+    compose::get_outbox(connection, outbox_id)?
+        .ok_or_else(|| format!("草稿不存在：{outbox_id}"))
+}
+
+/// 把 base64 附件落盘，返回 save_draft 需要的 attachments 数组。
+fn store_attachments(
+    state: &AppState,
+    outbox_id: i64,
+    attachments: &[Value],
+) -> Result<Vec<Value>, String> {
+    const MAX_EACH: usize = 5 * 1024 * 1024;
+    const MAX_TOTAL: usize = 10 * 1024 * 1024;
+    let dir = state
+        .user_data_path
+        .join("mcp-attachments")
+        .join(outbox_id.to_string());
+    std::fs::create_dir_all(&dir).map_err(|error| format!("创建附件目录失败：{error}"))?;
+
+    let mut total = 0usize;
+    let mut stored = Vec::new();
+    for item in attachments {
+        let filename = item
+            .get("filename")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "附件缺少 filename。".to_string())?;
+        let content = item
+            .get("contentBase64")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("附件 {filename} 缺少 contentBase64。"))?;
+        let bytes = base64_decode(content)
+            .map_err(|error| format!("附件 {filename} 解码失败：{error}"))?;
+        if bytes.len() > MAX_EACH {
+            return Err(format!("附件 {filename} 超过 5MB 上限。"));
+        }
+        total += bytes.len();
+        if total > MAX_TOTAL {
+            return Err("附件总大小超过 10MB 上限。".to_string());
+        }
+        let safe_name: String = filename
+            .chars()
+            .map(|ch| if matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { ch })
+            .collect();
+        let path = dir.join(if safe_name.trim().is_empty() { "attachment".to_string() } else { safe_name });
+        std::fs::write(&path, &bytes).map_err(|error| format!("写入附件失败：{error}"))?;
+        stored.push(json!({
+            "filePath": path.to_string_lossy(),
+            "filename": filename,
+            "mimeType": item.get("mimeType").and_then(Value::as_str).unwrap_or("application/octet-stream"),
+            "sizeBytes": bytes.len() as i64
+        }));
+    }
+    Ok(stored)
+}
+
+fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
+    let cleaned: String = input.chars().filter(|ch| !ch.is_whitespace()).collect();
+    let cleaned = cleaned.trim_end_matches('=');
+    let mut buffer = 0u32;
+    let mut bits = 0u8;
+    let mut out = Vec::with_capacity(cleaned.len() * 3 / 4);
+    for ch in cleaned.chars() {
+        let value = match ch {
+            'A'..='Z' => ch as u32 - 'A' as u32,
+            'a'..='z' => ch as u32 - 'a' as u32 + 26,
+            '0'..='9' => ch as u32 - '0' as u32 + 52,
+            '+' => 62,
+            '/' => 63,
+            _ => return Err(format!("包含非法字符：{ch}")),
+        };
+        buffer = (buffer << 6) | value;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push(((buffer >> bits) & 0xff) as u8);
+        }
+    }
+    Ok(out)
+}
+
+fn update_draft(state: &AppState, args: &Value) -> Result<Value, String> {
+    let connection = db::open(state)?;
+    let outbox_id = resolve_draft(&connection, args)?;
+    let existing = ensure_draft(&connection, outbox_id, "修改")?;
+    drop(connection);
+
+    let mut input = json!({
+        "accountId": existing.get("accountId").cloned().unwrap_or(Value::Null),
+        "mode": existing.get("composeKind").and_then(Value::as_str).unwrap_or("new"),
+        "outboxId": outbox_id,
+        "to": existing.get("to").cloned().unwrap_or_else(|| json!([])),
+        "cc": existing.get("cc").cloned().unwrap_or_else(|| json!([])),
+        "bcc": existing.get("bcc").cloned().unwrap_or_else(|| json!([])),
+        "subject": existing.get("subject").cloned().unwrap_or(Value::Null),
+        "bodyText": existing.get("bodyText").cloned().unwrap_or(Value::Null),
+        "bodyHtml": existing.get("bodyHtml").cloned().unwrap_or(Value::Null),
+        "relatedMessageId": existing.get("relatedMessageId").cloned().unwrap_or(Value::Null),
+        "inReplyTo": existing.get("inReplyTo").cloned().unwrap_or(Value::Null),
+        "referencesHeader": existing.get("referencesHeader").cloned().unwrap_or(Value::Null),
+        // 未显式给附件时保留原有附件
+        "attachments": existing.get("attachments").cloned().unwrap_or_else(|| json!([]))
+    });
+
+    for (field, key) in [("to", "to"), ("cc", "cc"), ("bcc", "bcc")] {
+        if let Some(list) = args.get(field).and_then(Value::as_array) {
+            let mapped: Vec<Value> = list
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|address| json!({ "email": address.trim() }))
+                .filter(|value| {
+                    value.get("email").and_then(Value::as_str).is_some_and(|text| !text.is_empty())
+                })
+                .collect();
+            input[key] = Value::Array(mapped);
+        }
+    }
+    if let Some(subject) = args.get("subject").and_then(Value::as_str) {
+        input["subject"] = json!(subject);
+    }
+    if let Some(body) = args.get("body").and_then(Value::as_str) {
+        input["bodyText"] = json!(body);
+    }
+    if let Some(attachments) = args.get("attachments").and_then(Value::as_array) {
+        let stored = store_attachments(state, outbox_id, attachments)?;
+        input["attachments"] = Value::Array(stored);
+    }
+
+    let saved = compose::save_draft(state, input)?;
+    Ok(json!({
+        "outboxId": outbox_id,
+        "status": saved.get("status").cloned().unwrap_or(json!("draft")),
+        "updated": true
+    }))
+}
+
+fn mark_read(state: &AppState, args: &Value) -> Result<Value, String> {
+    let connection = db::open(state)?;
+    let mut updated = 0usize;
+
+    if let Some(ids) = args.get("messageIds").and_then(Value::as_array) {
+        for id in ids.iter().filter_map(Value::as_i64) {
+            updated += connection
+                .execute(
+                    "UPDATE onemail_mail_messages SET is_read=1, read_state_override=1,
+                       updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                     WHERE message_id=?1 AND remote_deleted=0",
+                    [id],
+                )
+                .map_err(|error| format!("标记已读失败：{error}"))?;
+            connection
+                .execute(
+                    "UPDATE onemail_correspondent_messages SET is_read=1
+                     WHERE source='mail' AND message_id=?1",
+                    [id],
+                )
+                .map_err(|error| format!("标记已读失败：{error}"))?;
+        }
+    }
+
+    if let Some(correspondent_id) = opt_i64(args, "correspondentId") {
+        updated += crate::db::correspondents::mark_all_read(&connection, correspondent_id)?;
+    }
+
+    if updated == 0 && args.get("messageIds").is_none() && args.get("correspondentId").is_none() {
+        return Err("需要 messageIds 或 correspondentId。".to_string());
+    }
+    crate::db::correspondents::refresh_aggregates(&connection)?;
+    Ok(json!({ "updated": updated }))
+}
+
 fn create_draft(state: &AppState, args: &Value) -> Result<Value, String> {
     let connection = db::open(state)?;
     let account_id = match opt_i64(args, "accountId") {
@@ -815,6 +1104,37 @@ fn create_draft(state: &AppState, args: &Value) -> Result<Value, String> {
     if to.is_empty() {
         return Err("收件人不能为空。".to_string());
     }
+
+    // 幂等：同一个 clientKey 重复调用直接返回已有草稿
+    let client_key = args
+        .get("clientKey")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    if let Some(key) = client_key.as_deref() {
+        let connection = db::open(state)?;
+        let existing: Option<i64> = connection
+            .query_row(
+                "SELECT outbox_id FROM onemail_outbox_messages WHERE mcp_key=?1",
+                [key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| format!("读取草稿失败：{error}"))?;
+        if let Some(outbox_id) = existing {
+            let draft = ensure_draft(&connection, outbox_id, "复用")?;
+            return Ok(json!({
+                "outboxId": outbox_id,
+                "clientKey": key,
+                "status": "draft",
+                "reused": true,
+                "to": draft.get("to").cloned().unwrap_or(json!([])),
+                "subject": draft.get("subject").cloned().unwrap_or(Value::Null)
+            }));
+        }
+    }
+
     let input = json!({
         "accountId": account_id,
         "mode": "new",
@@ -824,13 +1144,42 @@ fn create_draft(state: &AppState, args: &Value) -> Result<Value, String> {
         "subject": args.get("subject").and_then(Value::as_str).unwrap_or(""),
         "bodyText": args.get("body").and_then(Value::as_str).unwrap_or("")
     });
-    let saved = compose::save_draft(state, input)?;
+    // 先落草稿拿到 outboxId，再把 base64 附件写到磁盘并回写附件表
+    let mut input = input;
+    let saved = compose::save_draft(state, input.clone())?;
+    let outbox_id = saved
+        .get("outboxId")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| "保存草稿后无法读取记录。".to_string())?;
+
+    if let Some(attachments) = args.get("attachments").and_then(Value::as_array) {
+        if !attachments.is_empty() {
+            let stored = store_attachments(state, outbox_id, attachments)?;
+            let mut with_files = input.clone();
+            with_files["outboxId"] = json!(outbox_id);
+            with_files["attachments"] = Value::Array(stored);
+            compose::save_draft(state, with_files)?;
+        }
+    }
+
+    if let Some(key) = client_key.as_deref() {
+        let connection = db::open(state)?;
+        connection
+            .execute(
+                "UPDATE onemail_outbox_messages SET mcp_key=?2 WHERE outbox_id=?1",
+                params![outbox_id, key],
+            )
+            .map_err(|error| format!("记录 MCP 幂等键失败：{error}"))?;
+    }
+
     Ok(json!({
-        "outboxId": saved.get("outboxId").cloned().unwrap_or(Value::Null),
+        "outboxId": outbox_id,
+        "clientKey": client_key,
         "accountId": account_id,
         "to": to,
         "subject": args.get("subject").cloned().unwrap_or(Value::Null),
-        "status": "draft"
+        "status": "draft",
+        "attachmentCount": args.get("attachments").and_then(Value::as_array).map(Vec::len).unwrap_or(0)
     }))
 }
 
@@ -852,7 +1201,7 @@ fn list_drafts(connection: &Connection, args: &Value) -> Result<Value, String> {
     let limit = opt_i64(args, "limit").unwrap_or(20).clamp(1, 100);
     let mut statement = connection
         .prepare(
-            "SELECT outbox_id,account_id,to_json,cc_json,bcc_json,subject,body_text,created_at,updated_at
+            "SELECT outbox_id,account_id,to_json,cc_json,bcc_json,subject,body_text,created_at,updated_at,mcp_key
              FROM onemail_outbox_messages
              WHERE status='draft' AND deleted_at IS NULL
              ORDER BY COALESCE(updated_at, created_at) DESC LIMIT ?1",
@@ -864,6 +1213,7 @@ fn list_drafts(connection: &Connection, args: &Value) -> Result<Value, String> {
             Ok(json!({
                 "outboxId": row.get::<_, i64>(0)?,
                 "accountId": row.get::<_, i64>(1)?,
+                "clientKey": row.get::<_, Option<String>>(9)?,
                 "to": row.get::<_, String>(2)?,
                 "cc": row.get::<_, String>(3)?,
                 "bcc": row.get::<_, String>(4)?,

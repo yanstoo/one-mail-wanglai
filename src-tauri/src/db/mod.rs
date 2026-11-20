@@ -9,7 +9,7 @@ const SCHEMA_SQL: &str = include_str!("schema.sql");
 /// 数据库结构版本，写入 `PRAGMA user_version`。
 /// 1：往来联系人索引（三张表 + 首次全量回填）。
 /// 2：`mail_messages.junk_override`（单封邮件的垃圾归属覆盖）需要重算索引。
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
 pub fn initialize(state: &AppState) -> Result<(), String> {
     let connection = open(state)?;
@@ -60,6 +60,18 @@ fn apply_migrations(connection: &Connection) -> Result<(), String> {
     // 点开时后端查不到行会报「邮件不存在」；清掉这些链接并重建
     // v6：往来人口径修正——收件邮件只看发件人（之前把共同收件人也算了进来），
     // 自己发出的邮件看收件人/抄送。必须整体重建，否则旧联系人不消失。
+    // v7：MCP 草稿的幂等键。AI 客户端重试 create_draft 时用同一个 clientKey，
+    // 不会产生重复草稿；该列只在 MCP 创建的草稿上有值。
+    if version < 7 {
+        add_column_if_missing(connection, "onemail_outbox_messages", "mcp_key", "TEXT")?;
+        connection
+            .execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_outbox_mcp_key
+                 ON onemail_outbox_messages(mcp_key) WHERE mcp_key IS NOT NULL",
+                [],
+            )
+            .map_err(|error| format!("创建 MCP 幂等索引失败：{error}"))?;
+    }
     if version < 6 {
         correspondents::rebuild_all(connection)?;
     }

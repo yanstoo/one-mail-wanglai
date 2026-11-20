@@ -171,7 +171,10 @@ export function McpSettingsPanel(): React.JSX.Element {
               className="mt-0.5 size-3.5 accent-[var(--primary)]"
             />
             <span>
-              写草稿<span className="text-muted-foreground">（新建、列出、删除草稿）</span>
+              写草稿与标记已读
+              <span className="text-muted-foreground">
+                （新建/修改/删除草稿，把邮件标记已读）
+              </span>
             </span>
           </label>
           <label className="flex items-start gap-2 text-[11.5px]">
@@ -212,8 +215,10 @@ export function McpSettingsPanel(): React.JSX.Element {
             {config || '（启用后生成）'}
           </pre>
           <p className="mt-1 text-[10.5px] text-muted-foreground">
-            提供的工具：list_accounts、mail_status、list_correspondents、list_messages、get_message、
-            create_draft、list_drafts、delete_draft、send_draft（需开启发送权限）。
+            工具：list_accounts、mail_status、list_correspondents、list_messages、get_message、
+            create_draft、update_draft、list_drafts、delete_draft、mark_read、send_draft（需发送权限）。
+            草稿可用 clientKey 做幂等键；附件按 base64 传入（单个 ≤5MB、合计 ≤10MB），
+            由应用落盘后再发送，因此真正发信时会带上附件。
           </p>
         </div>
       </div>
