@@ -576,7 +576,7 @@ async fn call_tool(app: &AppHandle, params: &Value) -> Result<Value, String> {
         "list_messages" => list_messages(&connection, &args),
         "get_message" => {
             drop(connection);
-            let value = get_message(&state, &args)?;
+            let value = get_message(&state, &args).await?;
             return Ok(text_result(value));
         }
         "create_draft" => {
@@ -785,7 +785,7 @@ fn list_messages(connection: &Connection, args: &Value) -> Result<Value, String>
     Ok(json!({ "messages": rows }))
 }
 
-fn get_message(state: &AppState, args: &Value) -> Result<Value, String> {
+async fn get_message(state: &AppState, args: &Value) -> Result<Value, String> {
     let message_id = require_i64(args, "messageId")?;
     let max_chars = opt_i64(args, "maxChars").unwrap_or(20000).clamp(200, 100_000) as usize;
     let connection = db::open(state)?;
@@ -835,26 +835,35 @@ fn get_message(state: &AppState, args: &Value) -> Result<Value, String> {
     }
     value["recipients"] = Value::Array(recipients);
 
-    let body: Option<String> = connection
-        .query_row(
-            "SELECT body_text FROM onemail_message_bodies WHERE message_id=?1",
-            [message_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .ok()
-        .flatten();
-    let (text, truncated) = match body {
-        Some(text) if text.chars().count() > max_chars => {
-            (text.chars().take(max_chars).collect::<String>(), true)
+    let (mut body, mut source) = read_body_text(&connection, message_id);
+    drop(connection);
+
+    // 本地没有正文时现场抓一次（懒加载的邮件、预取跳过的超大邮件都靠这里兜底）
+    let mut fetched = false;
+    if body.trim().is_empty() {
+        if let Ok(_) = crate::mail::body::load_message_body(state, message_id).await {
+            fetched = true;
+            let connection = db::open(state)?;
+            let (next, next_source) = read_body_text(&connection, message_id);
+            if !next.trim().is_empty() {
+                body = next;
+                source = next_source;
+            }
         }
-        Some(text) => (text, false),
-        None => (String::new(), false),
+    }
+
+    let (text, truncated) = if body.chars().count() > max_chars {
+        (body.chars().take(max_chars).collect::<String>(), true)
+    } else {
+        (body, false)
     };
     value["bodyText"] = Value::String(text);
     value["bodyTruncated"] = Value::Bool(truncated);
     value["bodyCached"] = Value::Bool(!value["bodyText"].as_str().unwrap_or("").is_empty());
+    value["bodySource"] = Value::String(source.to_string());
+    value["bodyFetchAttempted"] = Value::Bool(fetched);
 
+    let connection = db::open(state)?;
     let mut attachments = Vec::new();
     if let Ok(mut statement) = connection.prepare(
         "SELECT filename,mime_type,size_bytes FROM onemail_message_attachments
@@ -874,6 +883,32 @@ fn get_message(state: &AppState, args: &Value) -> Result<Value, String> {
     }
     value["attachments"] = Value::Array(attachments);
     Ok(value)
+}
+
+
+/// 读取本地缓存的正文：优先纯文本，其次从净化后的 HTML 反推。
+/// 返回 (文本, 来源) —— 来源用于让调用方区分「真的是空」还是「只有 HTML」。
+pub(crate) fn read_body_text(connection: &Connection, message_id: i64) -> (String, &'static str) {
+    let row: Option<(Option<String>, Option<String>)> = connection
+        .query_row(
+            "SELECT body_text, body_html_sanitized FROM onemail_message_bodies WHERE message_id=?1",
+            [message_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .ok()
+        .flatten();
+    let (text, html) = row.unwrap_or((None, None));
+    if let Some(text) = text.filter(|value| !value.trim().is_empty()) {
+        return (text, "text");
+    }
+    if let Some(html) = html.filter(|value| !value.trim().is_empty()) {
+        let derived = crate::mail::body::html_to_text(&html);
+        if !derived.trim().is_empty() {
+            return (derived, "html");
+        }
+    }
+    (String::new(), "none")
 }
 
 /// 用 outboxId 或 clientKey 定位一封草稿；两者都没有时报错。
@@ -1249,4 +1284,75 @@ async fn send_draft(app: &AppHandle, state: &AppState, outbox_id: i64) -> Result
         crate::commands::data::correspondents::reindex_account(state, account_id);
     }
     Ok(json!({ "sent": true, "outboxId": outbox_id, "result": result }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_body_text;
+    use rusqlite::Connection;
+
+    fn setup() -> Connection {
+        let connection = Connection::open_in_memory().expect("open");
+        connection
+            .execute_batch(crate::db::SCHEMA_SQL)
+            .expect("schema");
+        // 正文表对 mail_messages 有外键，插一行最小邮件满足约束
+        connection
+            .execute_batch(
+                "INSERT INTO onemail_provider_presets (provider_key,display_name,auth_type)
+                 VALUES ('gmail','Gmail','password');
+                 INSERT INTO onemail_mail_accounts
+                   (account_id,provider_key,email,normalized_email,account_label,auth_type,imap_host,imap_port,imap_security)
+                 VALUES (1,'gmail','me@example.com','me@example.com','主邮箱','password','imap.example.com',993,'ssl_tls');
+                 INSERT INTO onemail_mail_folders (folder_id,account_id,path,name,role,sync_enabled)
+                 VALUES (1,1,'INBOX','INBOX','inbox',1);
+                 INSERT INTO onemail_mail_messages (message_id,account_id,folder_id,uid,subject)
+                 VALUES (1,1,1,1,'t1'),(2,1,1,2,'t2'),(3,1,1,3,'t3');",
+            )
+            .expect("seed");
+        connection
+    }
+
+    fn insert_body(connection: &Connection, message_id: i64, text: Option<&str>, html: Option<&str>) {
+        connection
+            .execute(
+                "INSERT INTO onemail_message_bodies (message_id, body_text, body_html_sanitized)
+                 VALUES (?1, ?2, ?3)",
+                rusqlite::params![message_id, text, html],
+            )
+            .expect("insert body");
+    }
+
+    #[test]
+    fn prefers_plain_text() {
+        let connection = setup();
+        insert_body(&connection, 1, Some("纯文本正文"), Some("<p>HTML 正文</p>"));
+        let (text, source) = read_body_text(&connection, 1);
+        assert_eq!(source, "text");
+        assert_eq!(text, "纯文本正文");
+    }
+
+    #[test]
+    fn falls_back_to_html_when_text_missing() {
+        // 纯 HTML 邮件：body_text 为空，但 HTML 有内容 —— 这就是 HKDNS 那封的情况
+        let connection = setup();
+        insert_body(
+            &connection,
+            2,
+            None,
+            Some("<p>Dear Sir,</p><p>Please pay USD 15.</p>"),
+        );
+        let (text, source) = read_body_text(&connection, 2);
+        assert_eq!(source, "html");
+        assert!(text.contains("USD 15"), "应从 HTML 反推出正文，实际：{text}");
+    }
+
+    #[test]
+    fn reports_none_when_nothing_cached() {
+        let connection = setup();
+        insert_body(&connection, 3, Some("   "), Some(""));
+        let (text, source) = read_body_text(&connection, 3);
+        assert_eq!(source, "none");
+        assert!(text.is_empty());
+    }
 }

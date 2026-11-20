@@ -4,7 +4,7 @@ use crate::state::AppState;
 
 pub mod correspondents;
 
-const SCHEMA_SQL: &str = include_str!("schema.sql");
+pub(crate) const SCHEMA_SQL: &str = include_str!("schema.sql");
 
 /// 数据库结构版本，写入 `PRAGMA user_version`。
 /// 1：往来联系人索引（三张表 + 首次全量回填）。
